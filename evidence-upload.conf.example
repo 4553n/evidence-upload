@@ -1,0 +1,46 @@
+# Evidence Upload Configuration
+# Copy this file to ~/.evidence-upload.conf and customize
+# 
+# Security: Set permissions to 600 after editing:
+#   chmod 600 ~/.evidence-upload.conf
+#
+# Priority order:
+#   1. Command line flags (highest)
+#   2. Environment variables (EVIDENCE_*)
+#   3. Config file (~/.evidence-upload.conf)
+#   4. Defaults (lowest)
+
+# Cloudflare Tunnel Settings
+# Get your tunnel token from: https://one.dash.cloudflare.com → Networking → Tunnels
+CLOUDFLARE_TOKEN=eyJ...your-token-here...
+
+# Custom domain for Cloudflare tunnel (evidence.yourdomain.com)
+CLOUDFLARE_DOMAIN=yourdomain.com
+
+# Named tunnel (optional - for stable subdomains)
+# Create first: cloudflared tunnel create evidence-upload
+TUNNEL_NAME=evidence-upload
+
+# Server Settings
+PORT=8443
+STORAGE=./evidence
+
+# Backup Location (optional - network share for redundancy)
+# BACKUP=/nas/backup/evidence
+
+# Session Settings
+# EXPIRE=24h
+
+# Security Settings
+# HMAC secret key (auto-generated if empty - recommended)
+# SECRET=your-secret-key-here
+
+# Alert Settings (optional)
+# ALERT_EMAIL=security@yourdomain.com
+# ALERT_WEBHOOK=https://hooks.slack.com/services/xxx
+
+# External IP (auto-detected if empty)
+# EXTERNAL_IP=203.0.113.45
+
+# Base URL (auto-detected if empty)
+# BASE_URL=https://evidence.yourdomain.com
