@@ -1,0 +1,33 @@
+# Binaries
+evidence-upload
+evidence-upload.exe
+evidence-upload-*
+*.exe
+
+# Dependencies
+go.sum
+
+# Evidence storage
+evidence/
+.chunks/
+
+# Logs
+*.log
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# bore binary
+bore
+bore.exe
+
+# cloudflared binary
+cloudflared
+cloudflared.exe
