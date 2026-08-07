@@ -60,7 +60,7 @@ go build -o evidence-upload.exe .
 | `-tunnel` | `""` | Tunnel provider: `bore`, `cloudflare`, or `external` |
 | `-bore-path` | auto-detected | Path to bore binary |
 | `-cloudflare-path` | auto-detected | Path to cloudflared binary |
-| `-cloudflare-domain` | `""` | Custom domain for Cloudflare tunnel (e.g., sabicirdf.com) |
+| `-cloudflare-domain` | `""` | Custom domain for Cloudflare tunnel (e.g., yourdomain.com) |
 | `-tunnel-name` | `""` | Named tunnel for Cloudflare (creates if missing) |
 | `-tunnel-url` | `""` | External tunnel URL (for multi-analyst mode) |
 | `-version` | - | Show version and exit |
@@ -151,7 +151,7 @@ Cloudflare Tunnel provides a trusted domain that's less likely to be blocked by 
 2. Authenticate with Cloudflare:
    ```bash
    cloudflared tunnel login
-   # Opens browser - select your domain (e.g., sabicirdf.com)
+   # Opens browser - select your domain (e.g., yourdomain.com)
    ```
 
 ### Quick Tunnel (Temporary URL)
@@ -168,7 +168,7 @@ Cloudflare Tunnel provides a trusted domain that's less likely to be blocked by 
 cloudflared tunnel create evidence-upload
 
 # Route DNS (first time only)
-cloudflared tunnel route dns evidence-upload evidence.sabicirdf.com
+cloudflared tunnel route dns evidence-upload evidence.yourdomain.com
 
 # Run with named tunnel
 ./evidence-upload -tunnel cloudflare -tunnel-name evidence-upload
@@ -178,18 +178,18 @@ cloudflared tunnel route dns evidence-upload evidence.sabicirdf.com
 
 ```bash
 # Use your domain for the tunnel
-./evidence-upload -tunnel cloudflare -cloudflare-domain sabicirdf.com -tunnel-name evidence-upload
+./evidence-upload -tunnel cloudflare -cloudflare-domain yourdomain.com -tunnel-name evidence-upload
 ```
 
-This creates URLs like: `https://evidence.sabicirdf.com`
+This creates URLs like: `https://evidence.yourdomain.com`
 
-### Full Example with sabicirdf.com
+### Full Example with yourdomain.com
 
 ```bash
 # One-time setup
 cloudflared tunnel login
 cloudflared tunnel create evidence-upload
-cloudflared tunnel route dns evidence-upload evidence.sabicirdf.com
+cloudflared tunnel route dns evidence-upload evidence.yourdomain.com
 
 # Start server with tunnel
 ./evidence-upload \
@@ -197,14 +197,14 @@ cloudflared tunnel route dns evidence-upload evidence.sabicirdf.com
   -storage /evidence \
   -tunnel cloudflare \
   -tunnel-name evidence-upload \
-  -cloudflare-domain sabicirdf.com
+  -cloudflare-domain yourdomain.com
 ```
 
-Access at: `https://evidence.sabicirdf.com`
+Access at: `https://evidence.yourdomain.com`
 
 ### Benefits over bore
 
-- **Trusted domain**: Your domain (sabicirdf.com) is less likely blocked
+- **Trusted domain**: Your domain (yourdomain.com) is less likely blocked
 - **HTTPS included**: Free valid certificate
 - **Stable URLs**: No random ports or changing addresses
 - **Corporate friendly**: Works with proxies that trust Cloudflare
@@ -218,7 +218,7 @@ For teams where multiple forensic analysts need to use the app without accessing
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│  Domain Owner (sabicirdf.com)                               │
+│  Domain Owner (yourdomain.com)                               │
 │  ┌─────────────────────────────────────────────────────────┐ │
 │  │  cloudflared tunnel --url http://COORDINATOR:PORT      │ │
 │  └─────────────────────────────────────────────────────────┘ │
@@ -229,7 +229,7 @@ For teams where multiple forensic analysts need to use the app without accessing
 │  Coordinator Server                                         │
 │  ┌─────────────────────────────────────────────────────────┐ │
 │  │  evidence-upload -port 8443 -tunnel external            │ │
-│  │  -tunnel-url https://evidence.sabicirdf.com             │ │
+│  │  -tunnel-url https://evidence.yourdomain.com             │ │
 │  └─────────────────────────────────────────────────────────┘ │
 └─────────────────────────────────────────────────────────────┘
                               │
@@ -238,7 +238,7 @@ For teams where multiple forensic analysts need to use the app without accessing
 │  Analyst Machines (no Cloudflare credentials needed)        │
 │  ┌─────────────────────────────────────────────────────────┐ │
 │  │  evidence-upload -port 8443 -tunnel external            │ │
-│  │  -tunnel-url https://evidence.sabicirdf.com             │ │
+│  │  -tunnel-url https://evidence.yourdomain.com             │ │
 │  └─────────────────────────────────────────────────────────┘ │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -255,7 +255,7 @@ cloudflared tunnel login
 
 # 2. Create tunnel
 cloudflared tunnel create evidence-ops
-cloudflared tunnel route dns evidence-ops evidence.sabicirdf.com
+cloudflared tunnel route dns evidence-ops evidence.yourdomain.com
 
 # 3. Run tunnel (as a service or long-running process)
 cloudflared tunnel run evidence-ops
@@ -269,7 +269,7 @@ cloudflared tunnel run evidence-ops
   -port 8443 \
   -storage /path/to/evidence \
   -tunnel external \
-  -tunnel-url https://evidence.sabicirdf.com
+  -tunnel-url https://evidence.yourdomain.com
 ```
 
 ### Benefits for Multi-Analyst
@@ -285,21 +285,21 @@ cloudflared tunnel run evidence-ops
 **Option 1: Different ports**
 ```bash
 # Analyst 1
-./evidence-upload -port 8443 -tunnel external -tunnel-url https://evidence.sabicirdf.com
+./evidence-upload -port 8443 -tunnel external -tunnel-url https://evidence.yourdomain.com
 
 # Analyst 2
-./evidence-upload -port 8444 -tunnel external -tunnel-url https://evidence.sabicirdf.com
+./evidence-upload -port 8444 -tunnel external -tunnel-url https://evidence.yourdomain.com
 ```
 
 **Option 2: Different subdomains**
 ```bash
 # Domain owner runs multiple tunnels
-cloudflared tunnel --url http://analyst1:8443  # analyst1.evidence.sabicirdf.com
-cloudflared tunnel --url http://analyst2:8443  # analyst2.evidence.sabicirdf.com
+cloudflared tunnel --url http://analyst1:8443  # analyst1.evidence.yourdomain.com
+cloudflared tunnel --url http://analyst2:8443  # analyst2.evidence.yourdomain.com
 
 # Analysts use their assigned subdomain
-./evidence-upload -port 8443 -tunnel external -tunnel-url https://analyst1.evidence.sabicirdf.com
-./evidence-upload -port 8443 -tunnel external -tunnel-url https://analyst2.evidence.sabicirdf.com
+./evidence-upload -port 8443 -tunnel external -tunnel-url https://analyst1.evidence.yourdomain.com
+./evidence-upload -port 8443 -tunnel external -tunnel-url https://analyst2.evidence.yourdomain.com
 ```
 
 ## Examples

@@ -57,7 +57,7 @@ func Load() *Config {
 	flag.StringVar(&cfg.Tunnel, "tunnel", getEnvOrConfig(configFile, "TUNNEL", ""), "Tunnel provider: 'bore', 'cloudflare', or 'external'")
 	flag.StringVar(&cfg.BorePath, "bore-path", getEnvOrConfig(configFile, "BORE_PATH", ""), "Path to bore binary (auto-detected if empty)")
 	flag.StringVar(&cfg.CloudflarePath, "cloudflare-path", getEnvOrConfig(configFile, "CLOUDFLARE_PATH", ""), "Path to cloudflared binary (auto-detected if empty)")
-	flag.StringVar(&cfg.CloudflareDomain, "cloudflare-domain", getEnvOrConfig(configFile, "CLOUDFLARE_DOMAIN", ""), "Custom domain for Cloudflare tunnel (e.g., sabicirdf.com)")
+	flag.StringVar(&cfg.CloudflareDomain, "cloudflare-domain", getEnvOrConfig(configFile, "CLOUDFLARE_DOMAIN", ""), "Custom domain for Cloudflare tunnel (e.g., yourdomain.com)")
 	flag.StringVar(&cfg.CloudflareToken, "cloudflare-token", getEnvOrConfig(configFile, "CLOUDFLARE_TOKEN", ""), "Cloudflare tunnel token (from dashboard)")
 	flag.StringVar(&cfg.TunnelName, "tunnel-name", getEnvOrConfig(configFile, "TUNNEL_NAME", ""), "Named tunnel for Cloudflare (creates if missing)")
 	flag.StringVar(&cfg.TunnelURL, "tunnel-url", getEnvOrConfig(configFile, "TUNNEL_URL", ""), "External tunnel URL (for multi-analyst mode)")

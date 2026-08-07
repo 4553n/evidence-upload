@@ -10,7 +10,7 @@ All notable changes to this project will be documented in this file.
   - `-tunnel-token` flag for token-based authentication
   - Auto-install cloudflared binary
   - Named tunnel support
-  - Custom domain support (e.g., sabicirdf.com)
+  - Custom domain support (e.g., yourdomain.com)
 - **Multi-analyst mode** - `-tunnel external` for centralized tunnel deployment
   - Domain owner runs tunnel, analysts just use the URL
   - No cloudflared needed on analyst machines
