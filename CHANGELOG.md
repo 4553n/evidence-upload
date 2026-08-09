@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.1.0] - 2026-08-10
+
+### Added
+- **Chain of Custody PDF generation** - Automatic forensic documentation when sessions end
+  - PDF generated on session revocation with analyst name prompt
+  - PDF generated for expired sessions (background cleanup every 5 minutes)
+  - Includes: case info, evidence items with SHA-256 hashes, activity timeline, integrity verification, signature block
+  - Saved as `CHAIN_OF_CUSTODY.pdf` in the case folder with `.sha256` sidecar
+- **Revoke modal with analyst name** - Admin panel prompts for analyst name before revoking
+- **Session expiration cleanup** - Background goroutine now properly cleans up expired sessions
+
+### Changed
+- `RevokeSession()` now returns the session object before deletion (enables CoC generation)
+- `CleanupExpired()` now returns list of expired sessions (enables CoC generation for expired sessions)
+
 ## [2.0.0] - 2026-08-07
 
 ### Added

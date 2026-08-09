@@ -6,9 +6,11 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"evidence-upload/internal/alerts"
 	"evidence-upload/internal/config"
+	"evidence-upload/internal/custody"
 	"evidence-upload/internal/models"
 	"evidence-upload/internal/server"
 	"evidence-upload/internal/storage"
@@ -105,6 +107,22 @@ func main() {
 			cloudflareTunnel.Stop()
 		}
 		os.Exit(0)
+	}()
+
+	go func() {
+		ticker := time.NewTicker(5 * time.Minute)
+		defer ticker.Stop()
+		for range ticker.C {
+			expired := sessions.CleanupExpired()
+			for _, s := range expired {
+				cocPath, err := custody.GenerateCoC(s, "System (expired)", cfg.StoragePath)
+				if err != nil {
+					log.Printf("Failed to generate CoC for expired session %s: %v", s.Token[:16], err)
+				} else {
+					log.Printf("Generated CoC for expired session: %s", cocPath)
+				}
+			}
+		}
 	}()
 
 	log.Fatal(srv.ListenAndServe(addr))

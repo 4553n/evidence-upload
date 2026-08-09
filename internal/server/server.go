@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"evidence-upload/internal/alerts"
+	"evidence-upload/internal/custody"
 	"evidence-upload/internal/models"
 	"evidence-upload/internal/storage"
 )
@@ -620,7 +621,8 @@ func (s *Server) handleAdminRevoke(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		Token string `json:"token"`
+		Token       string `json:"token"`
+		AnalystName string `json:"analyst_name"`
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -628,12 +630,33 @@ func (s *Server) handleAdminRevoke(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if s.sessions.RevokeSession(req.Token) {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]bool{"success": true})
-	} else {
+	session, ok := s.sessions.RevokeSession(req.Token)
+	if !ok {
 		http.Error(w, "Session not found", http.StatusNotFound)
+		return
 	}
+
+	analystName := req.AnalystName
+	if analystName == "" {
+		analystName = "Unknown Analyst"
+	}
+
+	cocPath, err := custody.GenerateCoC(session, analystName, s.storage.BasePath())
+	if err != nil {
+		log.Printf("Failed to generate CoC for session %s: %v", req.Token, err)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": true,
+			"warning": fmt.Sprintf("Session revoked but CoC generation failed: %v", err),
+		})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success":  true,
+		"coc_path": cocPath,
+	})
 }
 
 func (s *Server) handleAdminCreate(w http.ResponseWriter, r *http.Request) {
@@ -1047,6 +1070,19 @@ var adminHTML = `<!DOCTYPE html>
         </div>
     </div>
 
+    <div class="modal" id="revokeModal">
+        <div class="modal-content">
+            <h2>Revoke Session</h2>
+            <p style="margin-bottom: 15px; color: #ccc;">This will end the session and generate a Chain of Custody PDF in the case folder.</p>
+            <div class="form-group">
+                <label>Analyst Name (for CoC document)</label>
+                <input type="text" id="analystName" placeholder="Enter your name">
+            </div>
+            <button class="btn btn-danger" onclick="confirmRevoke()">Revoke & Generate CoC</button>
+            <button class="btn" onclick="closeRevokeModal()" style="margin-left: 10px;">Cancel</button>
+        </div>
+    </div>
+
     <script>
         var baseUrl = '';
 
@@ -1127,13 +1163,38 @@ var adminHTML = `<!DOCTYPE html>
             loadSessions();
         }
 
-        async function revokeSession(token) {
-            if (!confirm('Are you sure you want to revoke this session?')) return;
-            await fetch('/admin/api/revoke', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({token: token})
-            });
+        var pendingRevokeToken = null;
+
+        function revokeSession(token) {
+            pendingRevokeToken = token;
+            document.getElementById('analystName').value = '';
+            document.getElementById('revokeModal').classList.add('active');
+        }
+
+        function closeRevokeModal() {
+            document.getElementById('revokeModal').classList.remove('active');
+            pendingRevokeToken = null;
+        }
+
+        async function confirmRevoke() {
+            var analystName = document.getElementById('analystName').value || 'Unknown Analyst';
+            var token = pendingRevokeToken;
+            closeRevokeModal();
+            try {
+                var resp = await fetch('/admin/api/revoke', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({token: token, analyst_name: analystName})
+                });
+                var result = await resp.json();
+                if (result.coc_path) {
+                    alert('Session revoked. Chain of Custody PDF saved to:\\n' + result.coc_path);
+                } else if (result.warning) {
+                    alert(result.warning);
+                }
+            } catch(e) {
+                alert('Failed to revoke session: ' + e.message);
+            }
             loadSessions();
         }
 

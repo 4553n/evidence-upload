@@ -108,15 +108,18 @@ func (sm *SessionManager) GetSession(token string) (*Session, bool) {
 	return session, true
 }
 
-func (sm *SessionManager) CleanupExpired() {
+func (sm *SessionManager) CleanupExpired() []*Session {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 
+	var expired []*Session
 	for token, session := range sm.sessions {
 		if time.Now().After(session.ExpiresAt) {
+			expired = append(expired, session)
 			delete(sm.sessions, token)
 		}
 	}
+	return expired
 }
 
 func (sm *SessionManager) ValidateToken(token, secret string) bool {
@@ -206,15 +209,15 @@ func (sm *SessionManager) ListSessions() []*Session {
 	return sessions
 }
 
-func (sm *SessionManager) RevokeSession(token string) bool {
+func (sm *SessionManager) RevokeSession(token string) (*Session, bool) {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 
-	_, ok := sm.sessions[token]
+	session, ok := sm.sessions[token]
 	if ok {
 		delete(sm.sessions, token)
 	}
-	return ok
+	return session, ok
 }
 
 func generateToken(length int) (string, error) {
