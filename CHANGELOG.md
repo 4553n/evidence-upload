@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.1.1] - 2026-08-10
+
+### Added
+- **IP info upload before evidence** - Uploader must send IP information before uploading files
+  - "Send IP Info" button uploads browser-generated IP detection report as evidence
+  - Upload form disabled until IP info is sent
+  - IP info file parsed by Chain of Custody PDF for detailed collector IP section
+
+### Fixed
+- **File list not showing after upload** - `handleListFiles` now uses session FolderName instead of raw token
+- **SHA-256 hash files in file list** - Filtered out from uploader's file list
+
+### Changed
+- CoC PDF now shows detailed IP information from browser-uploaded file (Local IP, Public IP, Forwarded For, User Agent, etc.)
+
 ## [2.1.0] - 2026-08-10
 
 ### Added

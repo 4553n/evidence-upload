@@ -527,12 +527,23 @@ func (s *Server) handleListFiles(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	session, ok := s.sessions.GetSession(token)
+	if !ok {
+		http.Error(w, "Session expired", http.StatusUnauthorized)
+		return
+	}
+
+	folderName := session.FolderName
+	if folderName == "" {
+		folderName = token
+	}
+
 	type FileInfo struct {
 		Name string `json:"name"`
 		Size int64  `json:"size"`
 	}
 
-	files, err := s.storage.ListFiles(token)
+	files, err := s.storage.ListFiles(folderName)
 	if err != nil {
 		http.Error(w, "Failed to list files", http.StatusInternalServerError)
 		return
@@ -540,7 +551,10 @@ func (s *Server) handleListFiles(w http.ResponseWriter, r *http.Request) {
 
 	var fileInfos []FileInfo
 	for _, name := range files {
-		size, _ := s.storage.GetFileSize(token, name)
+		if strings.HasSuffix(name, ".sha256") {
+			continue
+		}
+		size, _ := s.storage.GetFileSize(folderName, name)
 		fileInfos = append(fileInfos, FileInfo{Name: name, Size: size})
 	}
 
@@ -760,7 +774,8 @@ var uploadHTML = `<!DOCTYPE html>
                 <span class="ip-label">Public Internet:</span>
                 <span class="value" id="publicIpAddress">Detecting...</span>
             </div>
-            <button class="btn-small" id="downloadIpBtn" style="display:none;">Download IP Info</button>
+            <button class="btn-small" id="sendIpBtn" style="display:none;">Send IP Info</button>
+            <div id="ipStatus" style="margin-top: 8px; font-size: 0.85em;"></div>
         </div>
         <div class="drop-zone" id="dropZone">
             <p>Drag & drop files or folders here</p>
@@ -799,15 +814,30 @@ var uploadHTML = `<!DOCTYPE html>
                 const publicIp = myIpData.public_ip || 'Unable to detect';
                 document.getElementById('ipAddress').textContent = localIp;
                 document.getElementById('publicIpAddress').textContent = publicIp;
-                document.getElementById('downloadIpBtn').style.display = 'inline-block';
+                document.getElementById('sendIpBtn').style.display = 'inline-block';
             } catch (e) {
                 document.getElementById('ipAddress').textContent = 'Unable to detect';
                 document.getElementById('publicIpAddress').textContent = 'Unable to detect';
             }
         }
 
-        document.getElementById('downloadIpBtn').addEventListener('click', () => {
+        function setUploadEnabled(enabled) {
+            dropZone.style.opacity = enabled ? '1' : '0.5';
+            dropZone.style.pointerEvents = enabled ? 'auto' : 'none';
+            fileInput.disabled = !enabled;
+            uploadBtn.disabled = !enabled || selectedFiles.length === 0;
+        }
+
+        setUploadEnabled(false);
+
+        document.getElementById('sendIpBtn').addEventListener('click', async () => {
             if (!myIpData) return;
+            const btn = document.getElementById('sendIpBtn');
+            const ipStatus = document.getElementById('ipStatus');
+            btn.disabled = true;
+            btn.textContent = 'Sending...';
+            ipStatus.innerHTML = '';
+
             const content = [
                 'IP Detection Report',
                 '===================',
@@ -819,18 +849,28 @@ var uploadHTML = `<!DOCTYPE html>
                 'Protocol: ' + myIpData.protocol,
                 'User Agent: ' + myIpData.user_agent
             ].join('\n');
+
+            const filename = 'ip_detection_' + (myIpData.public_ip || myIpData.ip).replace(/[^a-zA-Z0-9]/g, '_') + '.txt';
             const blob = new Blob([content], {type: 'text/plain'});
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = 'ip_detection_' + (myIpData.public_ip || myIpData.ip).replace(/[^a-zA-Z0-9]/g, '_') + '.txt';
-            a.click();
-            URL.revokeObjectURL(url);
+            const file = new File([blob], filename, {type: 'text/plain'});
+
+            try {
+                await uploadFile(file);
+                btn.textContent = 'IP Info Sent';
+                btn.style.background = '#4caf50';
+                ipStatus.innerHTML = '<span class="success">IP information uploaded successfully.</span>';
+                setUploadEnabled(true);
+                loadExistingFiles();
+            } catch (e) {
+                btn.disabled = false;
+                btn.textContent = 'Send IP Info';
+                ipStatus.innerHTML = '<span class="error">Failed to send IP info: ' + e.message + '</span>';
+            }
         });
 
         fetchMyIP();
 
-        dropZone.addEventListener('click', () => { if (!uploading) fileInput.click(); });
+        dropZone.addEventListener('click', () => { if (!uploading && !fileInput.disabled) fileInput.click(); });
         dropZone.addEventListener('dragover', (e) => { e.preventDefault(); if (!uploading) dropZone.classList.add('dragover'); });
         dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
         dropZone.addEventListener('drop', (e) => {
