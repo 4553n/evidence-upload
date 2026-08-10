@@ -2,6 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.2.0] - 2026-08-11
+
+### Added
+- **Triage collection package support** - Analysts can upload a triage package via the admin panel
+  - "Send Triage Package" button in session detail modal
+  - File picker for selecting the triage package
+  - Public download link generated: `http://host:8443/triage/<token>`
+  - Link can be shared with remote parties for file download
+  - Package replace option for updating existing triage packages
+- **Auto-open browser** - Application automatically opens admin interface on startup
+  - Opens `http://localhost:8443/admin` in default browser
+  - Platform-specific browser open (macOS: `open`, Linux: `xdg-open`, Windows: `cmd /c start`)
+  - Use `-no-browser` flag to disable auto-open
+
 ## [2.1.1] - 2026-08-10
 
 ### Added

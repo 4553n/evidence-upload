@@ -19,17 +19,18 @@ type ActivityEvent struct {
 }
 
 type Session struct {
-	Token         string           `json:"token"`
-	Secret        string           `json:"secret"`
-	CreatedAt     time.Time        `json:"created_at"`
-	ExpiresAt     time.Time        `json:"expires_at"`
-	Description   string           `json:"description"`
-	FolderName    string           `json:"folder_name"`
-	UploaderIP    string           `json:"uploader_ip,omitempty"`
-	IsLocked      bool             `json:"is_locked"`
-	UploadedFiles []UploadedFile   `json:"uploaded_files"`
-	TotalSize     int64            `json:"total_size"`
-	Activity      []ActivityEvent  `json:"activity"`
+	Token          string           `json:"token"`
+	Secret         string           `json:"secret"`
+	CreatedAt      time.Time        `json:"created_at"`
+	ExpiresAt      time.Time        `json:"expires_at"`
+	Description    string           `json:"description"`
+	FolderName     string           `json:"folder_name"`
+	UploaderIP     string           `json:"uploader_ip,omitempty"`
+	IsLocked       bool             `json:"is_locked"`
+	UploadedFiles  []UploadedFile   `json:"uploaded_files"`
+	TotalSize      int64            `json:"total_size"`
+	Activity       []ActivityEvent  `json:"activity"`
+	TriagePackage  string           `json:"triage_package,omitempty"`
 }
 
 type UploadedFile struct {
@@ -218,6 +219,18 @@ func (sm *SessionManager) RevokeSession(token string) (*Session, bool) {
 		delete(sm.sessions, token)
 	}
 	return session, ok
+}
+
+func (sm *SessionManager) SetTriagePackage(token, filename string) {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+
+	session, ok := sm.sessions[token]
+	if !ok {
+		return
+	}
+
+	session.TriagePackage = filename
 }
 
 func generateToken(length int) (string, error) {

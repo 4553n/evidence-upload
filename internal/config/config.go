@@ -35,6 +35,7 @@ type Config struct {
 	TunnelName       string
 	TunnelURL        string
 	ShowVersion      bool
+	NoBrowser        bool
 }
 
 func Load() *Config {
@@ -62,6 +63,7 @@ func Load() *Config {
 	flag.StringVar(&cfg.TunnelName, "tunnel-name", getEnvOrConfig(configFile, "TUNNEL_NAME", ""), "Named tunnel for Cloudflare (creates if missing)")
 	flag.StringVar(&cfg.TunnelURL, "tunnel-url", getEnvOrConfig(configFile, "TUNNEL_URL", ""), "External tunnel URL (for multi-analyst mode)")
 	flag.BoolVar(&cfg.ShowVersion, "version", false, "Show version and exit")
+	flag.BoolVar(&cfg.NoBrowser, "no-browser", false, "Don't automatically open browser on startup")
 
 	flag.Parse()
 

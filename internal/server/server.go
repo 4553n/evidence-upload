@@ -64,6 +64,8 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/admin/api/session", s.handleAdminSessionDetail)
 	s.mux.HandleFunc("/admin/api/revoke", s.handleAdminRevoke)
 	s.mux.HandleFunc("/admin/api/create", s.handleAdminCreate)
+	s.mux.HandleFunc("/admin/api/triage-package", s.handleAdminTriagePackage)
+	s.mux.HandleFunc("/triage/", s.handleTriageDownload)
 }
 
 func (s *Server) ListenAndServe(addr string) error {
@@ -699,6 +701,103 @@ func (s *Server) handleAdminCreate(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(session)
 }
 
+func (s *Server) handleAdminTriagePackage(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	if err := r.ParseMultipartForm(100 << 20); err != nil {
+		http.Error(w, "Bad request", http.StatusBadRequest)
+		return
+	}
+
+	token := r.FormValue("token")
+	if !s.sessions.ValidateToken(token, "") {
+		http.Error(w, "Invalid session", http.StatusUnauthorized)
+		return
+	}
+
+	file, header, err := r.FormFile("file")
+	if err != nil {
+		http.Error(w, "No file provided", http.StatusBadRequest)
+		return
+	}
+	defer file.Close()
+
+	session, ok := s.sessions.GetSession(token)
+	if !ok {
+		http.Error(w, "Session expired", http.StatusUnauthorized)
+		return
+	}
+
+	folderName := session.FolderName
+	if folderName == "" {
+		folderName = token
+	}
+
+	sanitizedFilename := storage.SanitizeFilename(header.Filename)
+	triageFilename := "TRIAGE_PACKAGE_" + sanitizedFilename
+	hash, size, err := s.storage.SaveFile(folderName, triageFilename, file)
+	if err != nil {
+		http.Error(w, "Failed to save triage package", http.StatusInternalServerError)
+		return
+	}
+
+	sessionDir := s.storage.GetSessionDir(folderName)
+	finalPath := filepath.Join(sessionDir, triageFilename)
+	if err := storage.WriteHashFile(finalPath, hash); err != nil {
+		log.Printf("Failed to write hash file for triage package: %v", err)
+	}
+
+	s.sessions.SetTriagePackage(token, triageFilename)
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success":  true,
+		"filename": triageFilename,
+		"size":     size,
+	})
+}
+
+func (s *Server) handleTriageDownload(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	token := strings.TrimPrefix(r.URL.Path, "/triage/")
+	if token == "" {
+		http.Error(w, "Token required", http.StatusBadRequest)
+		return
+	}
+
+	session, ok := s.sessions.GetSession(token)
+	if !ok {
+		http.Error(w, "Session expired or not found", http.StatusNotFound)
+		return
+	}
+
+	if session.TriagePackage == "" {
+		http.Error(w, "No triage package available for this session", http.StatusNotFound)
+		return
+	}
+
+	folderName := session.FolderName
+	if folderName == "" {
+		folderName = token
+	}
+
+	filePath := filepath.Join(s.storage.GetSessionDir(folderName), session.TriagePackage)
+	if _, err := os.Stat(filePath); os.IsNotExist(err) {
+		http.Error(w, "Triage package file not found", http.StatusNotFound)
+		return
+	}
+
+	w.Header().Set("Content-Disposition", "attachment; filename=\""+session.TriagePackage+"\"")
+	http.ServeFile(w, r, filePath)
+}
+
 func getClientIP(r *http.Request) string {
 	forwarded := r.Header.Get("X-Forwarded-For")
 	if forwarded != "" {
@@ -1123,6 +1222,18 @@ var adminHTML = `<!DOCTYPE html>
         </div>
     </div>
 
+    <div class="modal" id="triageLinkModal">
+        <div class="modal-content">
+            <h2>Triage Package Link</h2>
+            <p>Share this link with the remote party to download the triage package:</p>
+            <div class="link-box" id="triageLink"></div>
+            <button class="btn btn-primary" onclick="copyTriageLink()" style="margin-top: 15px;">Copy to Clipboard</button>
+            <button class="btn" onclick="closeTriageLinkModal()" style="margin-left: 10px;">Close</button>
+        </div>
+    </div>
+
+    <input type="file" id="triageFileInput" style="display: none;">
+
     <script>
         var baseUrl = '';
 
@@ -1176,6 +1287,17 @@ var adminHTML = `<!DOCTYPE html>
                     session.activity.reverse().forEach(function(a) {
                         html += '<div class="activity-item"><div><span class="activity-time">' + new Date(a.timestamp).toLocaleString() + '</span> <span class="activity-action">' + a.action + '</span></div><div class="activity-details">IP: ' + a.ip + (a.details ? ' - ' + a.details : '') + '</div></div>';
                     });
+                }
+                html += '<h3 style="margin: 20px 0 10px; color: #0f3460;">Triage Package</h3>';
+                if (session.triage_package) {
+                    var triageLink = baseUrl + '/triage/' + session.token;
+                    html += '<div class="activity-item"><span class="activity-action">Package: ' + session.triage_package + '</span></div>';
+                    html += '<div class="link-box" style="margin-top: 10px;">' + triageLink + '</div>';
+                    html += '<button class="btn btn-primary" onclick="showTriageLink(\'' + session.token + '\')" style="margin-top: 10px;">Copy Link</button>';
+                    html += '<button class="btn" onclick="uploadTriagePackage(\'' + session.token + '\')" style="margin-top: 10px; margin-left: 10px;">Replace</button>';
+                } else {
+                    html += '<p style="color: #888; margin-bottom: 10px;">No triage package uploaded for this session.</p>';
+                    html += '<button class="btn btn-primary" onclick="uploadTriagePackage(\'' + session.token + '\')">Send Triage Package</button>';
                 }
                 document.getElementById('sessionDetails').innerHTML = html;
                 document.getElementById('detailModal').classList.add('active');
@@ -1241,6 +1363,58 @@ var adminHTML = `<!DOCTYPE html>
         function copyLink() {
             navigator.clipboard.writeText(document.getElementById('generatedLink').textContent);
             alert('Link copied to clipboard!');
+        }
+
+        var pendingTriageToken = null;
+
+        function uploadTriagePackage(token) {
+            pendingTriageToken = token;
+            document.getElementById('triageFileInput').click();
+        }
+
+        document.getElementById('triageFileInput').addEventListener('change', async function(e) {
+            var file = e.target.files[0];
+            if (!file || !pendingTriageToken) return;
+
+            var formData = new FormData();
+            formData.append('token', pendingTriageToken);
+            formData.append('file', file);
+
+            try {
+                var resp = await fetch('/admin/api/triage-package', {
+                    method: 'POST',
+                    body: formData
+                });
+                var result = await resp.json();
+                if (result.success) {
+                    var triageLink = baseUrl + '/triage/' + pendingTriageToken;
+                    document.getElementById('triageLink').textContent = triageLink;
+                    document.getElementById('triageLinkModal').classList.add('active');
+                    showSessionDetail(pendingTriageToken);
+                } else {
+                    alert('Failed to upload triage package');
+                }
+            } catch(e) {
+                alert('Failed to upload triage package: ' + e.message);
+            }
+
+            e.target.value = '';
+            pendingTriageToken = null;
+        });
+
+        function showTriageLink(token) {
+            var triageLink = baseUrl + '/triage/' + token;
+            document.getElementById('triageLink').textContent = triageLink;
+            document.getElementById('triageLinkModal').classList.add('active');
+        }
+
+        function closeTriageLinkModal() {
+            document.getElementById('triageLinkModal').classList.remove('active');
+        }
+
+        function copyTriageLink() {
+            navigator.clipboard.writeText(document.getElementById('triageLink').textContent);
+            alert('Triage link copied to clipboard!');
         }
 
         loadBaseUrl().then(function() { loadSessions(); });

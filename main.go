@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/exec"
 	"os/signal"
+	"runtime"
 	"syscall"
 	"time"
 
@@ -125,5 +127,29 @@ func main() {
 		}
 	}()
 
+	if !cfg.NoBrowser {
+		go func() {
+			time.Sleep(1 * time.Second)
+			adminURL := cfg.BaseURL + "/admin"
+			fmt.Printf("Opening admin interface: %s\n", adminURL)
+			openBrowser(adminURL)
+		}()
+	}
+
 	log.Fatal(srv.ListenAndServe(addr))
+}
+
+func openBrowser(url string) {
+	var cmd *exec.Cmd
+	switch runtime.GOOS {
+	case "darwin":
+		cmd = exec.Command("open", url)
+	case "windows":
+		cmd = exec.Command("cmd", "/c", "start", url)
+	default:
+		cmd = exec.Command("xdg-open", url)
+	}
+	if err := cmd.Start(); err != nil {
+		log.Printf("Failed to open browser: %v", err)
+	}
 }
