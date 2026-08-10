@@ -1,6 +1,6 @@
 # Evidence Upload
 
-A secure forensic evidence data upload web application with session-based authentication, IP binding, and activity tracking.
+A secure forensic evidence data upload web application with session-based authentication, IP binding, activity tracking, and Chain of Custody PDF generation.
 
 ## Features
 
@@ -9,6 +9,11 @@ A secure forensic evidence data upload web application with session-based authen
 - **Drag & Drop**: Modern upload interface with progress bars
 - **Session Management**: Create, monitor, and revoke upload sessions
 - **Activity Tracking**: Full audit trail of all session activities
+- **Chain of Custody PDF**: Automatic forensic documentation on session revocation/expiration
+- **Triage Collection Package**: Upload and share triage packages with remote parties
+- **IP Detection**: Browser-based IP detection with upload for forensic documentation
+- **Auto-open Browser**: Admin interface opens automatically on startup
+- **Config File Support**: Persistent configuration via `~/.evidence-upload.conf`
 - **Multi-channel Alerts**: Desktop, email, webhook, and log file notifications
 - **Tunnel Support**: Built-in bore and Cloudflare Tunnel for internet access
 - **Cross-platform**: Works on Windows, Linux, and macOS
@@ -37,6 +42,9 @@ go build -o evidence-upload.exe .
 # Start with bore tunnel for internet access
 ./evidence-upload -tunnel bore
 
+# Start without auto-opening browser
+./evidence-upload -no-browser
+
 # Show version
 ./evidence-upload -version
 ```
@@ -61,9 +69,48 @@ go build -o evidence-upload.exe .
 | `-bore-path` | auto-detected | Path to bore binary |
 | `-cloudflare-path` | auto-detected | Path to cloudflared binary |
 | `-cloudflare-domain` | `""` | Custom domain for Cloudflare tunnel (e.g., yourdomain.com) |
+| `-cloudflare-token` | `""` | Cloudflare tunnel token (from dashboard) |
 | `-tunnel-name` | `""` | Named tunnel for Cloudflare (creates if missing) |
 | `-tunnel-url` | `""` | External tunnel URL (for multi-analyst mode) |
+| `-no-browser` | `false` | Don't automatically open browser on startup |
 | `-version` | - | Show version and exit |
+
+## Configuration File
+
+Settings can be persisted in `~/.evidence-upload.conf` (Linux/macOS) or `%USERPROFILE%\.evidence-upload.conf` (Windows).
+
+**Priority order:** CLI flags > Environment variables (`EVIDENCE_*`) > Config file > Defaults
+
+```ini
+# Evidence Upload Configuration
+# Security: Set permissions to 600 after editing: chmod 600 ~/.evidence-upload.conf
+
+# Cloudflare Tunnel Settings
+CLOUDFLARE_TOKEN=eyJ...your-token-here...
+CLOUDFLARE_DOMAIN=yourdomain.com
+TUNNEL_NAME=evidence-upload
+
+# Server Settings
+PORT=8443
+STORAGE=./evidence
+BACKUP=/nas/backup/evidence
+
+# Session Settings
+EXPIRE=24h
+
+# Security Settings
+# SECRET=your-secret-key-here
+
+# Alert Settings
+ALERT_EMAIL=security@yourdomain.com
+ALERT_WEBHOOK=https://hooks.slack.com/services/xxx
+
+# External IP (auto-detected if empty)
+# EXTERNAL_IP=203.0.113.45
+
+# Base URL (auto-detected if empty)
+# BASE_URL=https://evidence.yourdomain.com
+```
 
 ## Usage Workflow
 
@@ -72,6 +119,8 @@ go build -o evidence-upload.exe .
 ```bash
 ./evidence-upload -port 8443 -storage /evidence -alert-email admin@corp.com
 ```
+
+The browser will automatically open to the admin interface at `http://localhost:8443/admin`. Use `-no-browser` to disable this behavior.
 
 ### 2. Access Admin Panel
 
@@ -92,27 +141,88 @@ Copy the generated link and send it to the uploading party.
 
 The uploader opens the link and sees:
 - Case reference number
+- IP detection section (must send IP info first)
 - Drag & drop upload area
 - File selection button
 - Progress bar during upload
 - List of uploaded files with sizes
 
-### 6. Monitor Activity
+### 6. Send Triage Package (Optional)
+
+If you have a triage collection package to share:
+
+- In the admin panel, click on the session token
+- Click "Send Triage Package" in the session detail modal
+- Select the triage package file
+- A download link is generated: `http://host:8443/triage/<token>`
+- Share this link with the remote party
+
+### 7. Monitor Activity
 
 In the admin panel, click on any token to see:
 - Full token and secret
 - Session status (locked IP)
 - Uploaded files with sizes and hashes
 - Complete activity history
+- Triage package status and download link
+
+### 8. Revoke Session
+
+When evidence collection is complete:
+- Click "Revoke" on the session
+- Enter analyst name for Chain of Custody document
+- CoC PDF is generated in the case folder
+
+## Triage Collection Package
+
+The triage package feature allows analysts to share a collection tool with remote parties.
+
+### Workflow
+
+1. **Analyst**: Creates a session in the admin panel
+2. **Analyst**: Clicks "Send Triage Package" and selects the file
+3. **Analyst**: Shares the generated download link with the remote party
+4. **Remote Party**: Downloads the triage package via the link
+5. **Remote Party**: Runs the triage package to collect and upload evidence
+
+### Features
+
+- **Per-session**: Each session can have its own triage package
+- **Public download**: No authentication required to download the package
+- **Replaceable**: Analyst can replace the package with a new version
+- **Auto-named**: Files are stored as `TRIAGE_PACKAGE_<original_filename>`
+
+### Download Link Format
+
+```
+http://<host>:<port>/triage/<session-token>
+```
+
+The link is public and does not require the session secret.
 
 ## Security Features
 
 - **HMAC-signed tokens**: Each session has a unique token and secret
 - **IP binding**: First access locks the session to the uploader's IP
+- **IP detection**: Browser uploads IP information as first evidence file
 - **No download capability**: Uploaders can only see filenames, not download
 - **Session expiration**: Automatic cleanup of expired sessions
+- **Chain of Custody PDF**: Generated on revocation/expiration with full audit trail
 - **Alert system**: Notifications for unauthorized access attempts
-- **File integrity**: SHA-256 hash computed for every uploaded file
+- **File integrity**: SHA-256 hash computed for every uploaded file (saved as `.sha256` sidecar)
+
+## Chain of Custody PDF
+
+When a session is revoked or expires, a Chain of Custody PDF is automatically generated containing:
+
+- Case information (description, token, dates, status)
+- Collector IP information (from uploaded IP detection file)
+- Evidence items table (filename, size, SHA-256 hash)
+- Activity timeline (all actions with timestamps)
+- Integrity verification details
+- Certification statement with analyst signature block
+
+The PDF is saved as `CHAIN_OF_CUSTODY.pdf` in the case folder with a `.sha256` sidecar file.
 
 ## Tunnel Support (bore)
 
@@ -333,6 +443,12 @@ The server will output the public bore URL to share with uploaders.
   -alert-log /var/log/evidence-upload.log
 ```
 
+### Headless Setup (No Browser)
+
+```bash
+./evidence-upload -no-browser -port 8443 -storage /evidence
+```
+
 ## Platform-Specific Notes
 
 ### Windows
@@ -340,29 +456,33 @@ The server will output the public bore URL to share with uploaders.
 - Desktop notifications use Windows Toast API
 - Use `-alert-desktop=true` for system tray alerts
 - bore.exe may trigger Windows Defender (false positive) - whitelist if needed
+- Browser opens with `cmd /c start`
 
 ### Linux
 
 - Desktop notifications use libnotify/D-Bus
 - Install `libnotify-bin` for desktop alerts: `sudo apt install libnotify-bin`
 - bore binary is installed to the current directory
+- Browser opens with `xdg-open`
 
 ### macOS
 
 - Desktop notifications use AppleScript
 - bore binary is installed to the current directory
+- Browser opens with `open`
 
 ## Architecture
 
 ```
 evidence-upload/
-├── main.go                    # Entry point
+├── main.go                    # Entry point + browser open logic
 ├── version.go                 # Version constant
 ├── go.mod
 ├── internal/
 │   ├── config/config.go       # CLI flags and configuration
 │   ├── models/session.go      # Session management with HMAC
 │   ├── storage/storage.go     # Local + backup storage
+│   ├── custody/custody.go     # Chain of Custody PDF generation
 │   ├── alerts/manager.go      # Multi-channel alerts
 │   ├── server/server.go       # HTTP handlers + web UI
 │   └── tunnel/
