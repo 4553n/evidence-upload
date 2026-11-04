@@ -257,3 +257,8 @@ func generateToken(length int) (string, error) {
 	}
 	return hex.EncodeToString(b), nil
 }
+
+// NewToken returns a cryptographically random hex token (length in bytes).
+func NewToken(length int) (string, error) {
+	return generateToken(length)
+}

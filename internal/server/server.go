@@ -2,6 +2,7 @@ package server
 
 import (
 	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -36,6 +37,7 @@ type Config struct {
 	SessionDuration time.Duration
 	BaseURL         string
 	Version         string
+	AdminToken      string
 }
 
 func NewServer(cfg *Config, sessions *models.SessionManager, storage *storage.Storage, alertMgr *alerts.Manager) *Server {
@@ -51,6 +53,31 @@ func NewServer(cfg *Config, sessions *models.SessionManager, storage *storage.St
 	return s
 }
 
+// requireAdmin gates the admin API behind the admin token, sent either as
+// X-Admin-Token or Authorization: Bearer. The /admin HTML shell is public (it
+// contains no data); every data endpoint behind it is protected. Upload (/api)
+// and triage download (/triage) endpoints keep their existing session-based auth.
+func (s *Server) requireAdmin(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if s.cfg.AdminToken == "" {
+			writeJSONError(w, http.StatusServiceUnavailable, "admin token not configured; set -admin-token or ADMIN_TOKEN")
+			return
+		}
+		got := r.Header.Get("X-Admin-Token")
+		if got == "" {
+			auth := r.Header.Get("Authorization")
+			if strings.HasPrefix(auth, "Bearer ") {
+				got = strings.TrimPrefix(auth, "Bearer ")
+			}
+		}
+		if subtle.ConstantTimeCompare([]byte(got), []byte(s.cfg.AdminToken)) != 1 {
+			writeJSONError(w, http.StatusUnauthorized, "invalid or missing admin token")
+			return
+		}
+		next(w, r)
+	}
+}
+
 func (s *Server) routes() {
 	s.mux.HandleFunc("/", s.handleUpload)
 	s.mux.HandleFunc("/api/upload", s.handleUploadFile)
@@ -61,11 +88,11 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/baseurl", s.handleBaseURL)
 	s.mux.HandleFunc("/api/my-ip", s.handleMyIP)
 	s.mux.HandleFunc("/admin", s.handleAdmin)
-	s.mux.HandleFunc("/admin/api/sessions", s.handleAdminSessions)
-	s.mux.HandleFunc("/admin/api/session", s.handleAdminSessionDetail)
-	s.mux.HandleFunc("/admin/api/revoke", s.handleAdminRevoke)
-	s.mux.HandleFunc("/admin/api/create", s.handleAdminCreate)
-	s.mux.HandleFunc("/admin/api/triage-package", s.handleAdminTriagePackage)
+	s.mux.HandleFunc("/admin/api/sessions", s.requireAdmin(s.handleAdminSessions))
+	s.mux.HandleFunc("/admin/api/session", s.requireAdmin(s.handleAdminSessionDetail))
+	s.mux.HandleFunc("/admin/api/revoke", s.requireAdmin(s.handleAdminRevoke))
+	s.mux.HandleFunc("/admin/api/create", s.requireAdmin(s.handleAdminCreate))
+	s.mux.HandleFunc("/admin/api/triage-package", s.requireAdmin(s.handleAdminTriagePackage))
 	s.mux.HandleFunc("/triage/", s.handleTriageDownload)
 }
 
@@ -653,6 +680,12 @@ func (s *Server) handleAdmin(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleAdminSessions(w http.ResponseWriter, r *http.Request) {
 	sessions := s.sessions.ListSessions()
+	// Never expose upload secrets in the bulk list — a leaked list must not
+	// hand out working upload links. The detail endpoint still provides the
+	// secret for building a link for a specific session.
+	for _, sess := range sessions {
+		sess.Secret = ""
+	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(sessions)
 }
@@ -1290,6 +1323,26 @@ var adminHTML = `<!DOCTYPE html>
 
     <script>
         var baseUrl = '';
+        var adminToken = '';
+        try {
+            adminToken = sessionStorage.getItem('adminToken') || '';
+            var urlKey = new URLSearchParams(location.search).get('key');
+            if (urlKey) {
+                adminToken = urlKey;
+                sessionStorage.setItem('adminToken', adminToken);
+                history.replaceState({}, '', location.pathname);
+            }
+        } catch(e) {}
+
+        function promptAdminToken() {
+            var t = prompt('Enter admin token (printed at server startup):');
+            if (t && t.trim()) {
+                adminToken = t.trim();
+                try { sessionStorage.setItem('adminToken', adminToken); } catch(e) {}
+                return true;
+            }
+            return false;
+        }
 
         async function loadBaseUrl() {
             try {
@@ -1323,12 +1376,18 @@ var adminHTML = `<!DOCTYPE html>
 
         // fetch wrapper: separates "server unreachable" from "server said no",
         // so the UI shows an actionable message instead of "Load failed".
-        async function apiFetch(url, opts) {
+        // Attaches the admin token; prompts for it once on 401.
+        async function apiFetch(url, opts, retried) {
+            opts = opts || {};
+            opts.headers = Object.assign({}, opts.headers || {}, {'X-Admin-Token': adminToken});
             var resp;
             try {
                 resp = await fetch(url, opts);
             } catch(e) {
                 throw new Error('Could not reach the server (' + e.message + '). Check that the server (and any tunnel) is still running, then try again.');
+            }
+            if (resp.status === 401 && !retried && promptAdminToken()) {
+                return apiFetch(url, opts, true);
             }
             var text = await resp.text();
             var data = null;

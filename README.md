@@ -86,6 +86,7 @@ go build -o evidence-upload.exe .
 | `-backup` | `""` | Network share backup path (optional) |
 | `-expire` | `24h` | Default session expiration duration |
 | `-secret` | auto-generated | HMAC secret key |
+| `-admin-token` | auto-generated | Admin panel token (printed at startup) |
 | `-max-size` | `10737418240` (10GB) | Maximum upload size in bytes |
 | `-alert-email` | `""` | Email address for security alerts |
 | `-alert-webhook` | `""` | Webhook URL for alerts (Slack/Discord/etc) |
@@ -230,6 +231,7 @@ The link is public and does not require the session secret.
 
 ## Security Features
 
+- **Admin token auth**: Admin panel and API require a token (`-admin-token` / `ADMIN_TOKEN`), auto-generated at startup
 - **HMAC-signed tokens**: Each session has a unique token and secret
 - **IP binding**: First access locks the session to the uploader's IP
 - **IP detection**: Browser uploads IP information as first evidence file
@@ -238,6 +240,29 @@ The link is public and does not require the session secret.
 - **Chain of Custody PDF**: Generated on revocation/expiration with full audit trail
 - **Alert system**: Notifications for unauthorized access attempts
 - **File integrity**: SHA-256 hash computed for every uploaded file (saved as `.sha256` sidecar)
+
+## Admin Authentication
+
+The admin panel and its API are protected by an admin token. **Without it, anyone
+who can reach the server — including the internet, if you run a tunnel — can list
+sessions, take over upload links, and revoke sessions.**
+
+- The token is **auto-generated at startup and printed to the console**:
+  ```
+  Admin token: 3f2a...  (keep private; set via -admin-token or ADMIN_TOKEN)
+  ```
+- Set your own with `-admin-token <token>` or `ADMIN_TOKEN=<token>` in the config file
+- The admin panel prompts for the token once and remembers it in `sessionStorage`
+- The auto-opened admin URL carries the token (`/admin?key=...`); it is removed
+  from the address bar after loading
+- API clients send it as `X-Admin-Token: <token>` or `Authorization: Bearer <token>`
+- The upload flow (`/api/...`) does **not** use the admin token — uploaders
+  authenticate with their session token+secret as before
+
+**Treat the admin token like a password.** Prefer Cloudflare Tunnel (HTTPS) over
+bore (plaintext TCP) when exposing the admin panel; with Cloudflare you can also
+front it with Cloudflare Access for SSO. Upload secrets are never returned by the
+session list API — only the per-session detail endpoint provides them.
 
 ## Chain of Custody PDF
 

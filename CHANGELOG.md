@@ -2,6 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.2.2] - 2026-11-04
+
+### Security
+- **Admin API now requires an admin token** - Previously the admin API was fully unauthenticated, so anyone who could reach the server (e.g. through a bore/Cloudflare tunnel) could list sessions, steal upload links, create/revoke sessions, and upload triage packages
+  - Token is auto-generated at startup and printed to the console (override with `-admin-token` or `ADMIN_TOKEN`)
+  - Sent as `X-Admin-Token` header (or `Authorization: Bearer`); the admin panel prompts once and stores it in `sessionStorage`
+  - The auto-opened admin URL carries `?key=<token>` for seamless startup (removed from the address bar after load)
+  - Constant-time token comparison; fails closed if no token is configured
+- **Upload secrets removed from the session list API** - `GET /admin/api/sessions` no longer returns `secret` values; a leaked list can no longer be turned into working upload links (the per-session detail endpoint still provides the secret for building a link)
+- **Request logging shows the method, path, status and duration** - Query strings are omitted so tokens/secrets never reach logs
+
+### Added
+- **`-admin-token` flag / `ADMIN_TOKEN` config key**
+- **Startup prints the admin token** (override recommended for shared/documented deployments)
+
+### Fixed
+- **Auto-open browser URL when `BaseURL` is empty** - Falls back to `http://localhost:<port>/admin` instead of opening a bare path
+
 ## [2.2.1] - 2026-11-04
 
 ### Added

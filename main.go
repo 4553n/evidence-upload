@@ -29,6 +29,15 @@ func main() {
 
 	sessions := models.NewSessionManager(cfg.SecretKey)
 
+	adminToken := cfg.AdminToken
+	if adminToken == "" {
+		var err error
+		adminToken, err = models.NewToken(16)
+		if err != nil {
+			log.Fatalf("Failed to generate admin token: %v", err)
+		}
+	}
+
 	store, err := storage.New(cfg.StoragePath, cfg.BackupPath)
 	if err != nil {
 		log.Fatalf("Failed to initialize storage: %v", err)
@@ -42,6 +51,7 @@ func main() {
 		SessionDuration: cfg.SessionDuration,
 		BaseURL:         cfg.BaseURL,
 		Version:         Version,
+		AdminToken:      adminToken,
 	}
 
 	srv := server.NewServer(srvConfig, sessions, store, alertMgr)
@@ -92,6 +102,7 @@ func main() {
 	fmt.Printf("Evidence Upload Server v%s starting on %s\n", Version, addr)
 	fmt.Printf("Storage: %s\n", cfg.StoragePath)
 	fmt.Printf("Base URL: %s\n", cfg.BaseURL)
+	fmt.Printf("Admin token: %s  (keep private; set via -admin-token or ADMIN_TOKEN)\n", adminToken)
 	if cfg.BackupPath != "" {
 		fmt.Printf("Backup: %s\n", cfg.BackupPath)
 	}
@@ -130,8 +141,12 @@ func main() {
 	if !cfg.NoBrowser {
 		go func() {
 			time.Sleep(1 * time.Second)
-			adminURL := cfg.BaseURL + "/admin"
-			fmt.Printf("Opening admin interface: %s\n", adminURL)
+			base := cfg.BaseURL
+			if base == "" {
+				base = fmt.Sprintf("http://localhost:%d", cfg.Port)
+			}
+			adminURL := base + "/admin?key=" + adminToken
+			fmt.Println("Opening admin interface...")
 			openBrowser(adminURL)
 		}()
 	}

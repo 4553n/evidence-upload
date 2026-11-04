@@ -34,6 +34,7 @@ type Config struct {
 	CloudflareToken  string
 	TunnelName       string
 	TunnelURL        string
+	AdminToken       string
 	ShowVersion      bool
 	NoBrowser        bool
 }
@@ -62,6 +63,7 @@ func Load() *Config {
 	flag.StringVar(&cfg.CloudflareToken, "cloudflare-token", getEnvOrConfig(configFile, "CLOUDFLARE_TOKEN", ""), "Cloudflare tunnel token (from dashboard)")
 	flag.StringVar(&cfg.TunnelName, "tunnel-name", getEnvOrConfig(configFile, "TUNNEL_NAME", ""), "Named tunnel for Cloudflare (creates if missing)")
 	flag.StringVar(&cfg.TunnelURL, "tunnel-url", getEnvOrConfig(configFile, "TUNNEL_URL", ""), "External tunnel URL (for multi-analyst mode)")
+	flag.StringVar(&cfg.AdminToken, "admin-token", getEnvOrConfig(configFile, "ADMIN_TOKEN", ""), "Admin panel token (auto-generated if empty)")
 	flag.BoolVar(&cfg.ShowVersion, "version", false, "Show version and exit")
 	flag.BoolVar(&cfg.NoBrowser, "no-browser", false, "Don't automatically open browser on startup")
 
