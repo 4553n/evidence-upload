@@ -20,6 +20,34 @@ A secure forensic evidence data upload web application with session-based authen
 
 ## Quick Start
 
+### Download Prebuilt Binaries
+
+Grab the archive for your platform from the [Releases page](https://github.com/4553n/evidence-upload/releases). Unix builds ship as `.tar.gz` — extracting restores the executable bit:
+
+```bash
+# macOS (Apple Silicon)
+tar -xzf evidence-upload-v2.2.0-macos-arm64.tar.gz
+./evidence-upload-v2.2.0-macos-arm64
+
+# macOS (Intel)
+tar -xzf evidence-upload-v2.2.0-macos-amd64.tar.gz
+
+# Linux
+tar -xzf evidence-upload-v2.2.0-linux-amd64.tar.gz
+
+# Windows: download evidence-upload-v2.2.0-windows-amd64.exe and run it
+```
+
+**macOS note**: if you downloaded a bare binary (not the archive) or macOS says
+"cannot be opened because the developer cannot be verified", fix it with:
+
+```bash
+chmod +x evidence-upload-v2.2.0-macos-arm64            # restore executable bit
+xattr -d com.apple.quarantine evidence-upload-v2.2.0-macos-arm64  # clear Gatekeeper quarantine
+```
+
+Or right-click the binary → **Open** → **Open** to bypass Gatekeeper once.
+
 ### Build
 
 ```bash
