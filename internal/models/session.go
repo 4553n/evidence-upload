@@ -39,6 +39,17 @@ type UploadedFile struct {
 	Hash string `json:"hash,omitempty"`
 }
 
+// snapshot returns a deep copy of the session, safe to JSON-encode while
+// concurrent uploads may be mutating the original.
+func (s *Session) snapshot() *Session {
+	cp := *s
+	cp.UploadedFiles = make([]UploadedFile, len(s.UploadedFiles))
+	copy(cp.UploadedFiles, s.UploadedFiles)
+	cp.Activity = make([]ActivityEvent, len(s.Activity))
+	copy(cp.Activity, s.Activity)
+	return &cp
+}
+
 type SessionManager struct {
 	sessions map[string]*Session
 	mu       sync.RWMutex
@@ -194,7 +205,7 @@ func (sm *SessionManager) GetSessionDetail(token string) (*Session, bool) {
 		return nil, false
 	}
 
-	return session, true
+	return session.snapshot(), true
 }
 
 func (sm *SessionManager) ListSessions() []*Session {
@@ -204,7 +215,7 @@ func (sm *SessionManager) ListSessions() []*Session {
 	sessions := make([]*Session, 0, len(sm.sessions))
 	for _, s := range sm.sessions {
 		if time.Now().Before(s.ExpiresAt) {
-			sessions = append(sessions, s)
+			sessions = append(sessions, s.snapshot())
 		}
 	}
 	return sessions

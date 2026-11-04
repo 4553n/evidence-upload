@@ -1157,6 +1157,16 @@ var adminHTML = `<!DOCTYPE html>
         .link-box { background: #0f3460; padding: 10px; border-radius: 4px; word-break: break-all; margin-top: 10px; font-family: monospace; font-size: 12px; }
         .token-link { color: #2196F3; cursor: pointer; text-decoration: underline; }
         .token-link:hover { color: #64B5F6; }
+        .refresh-info { float: right; font-size: 0.6em; color: #888; font-weight: normal; }
+        .file-list { margin-top: 4px; }
+        .file-name { font-size: 0.78em; color: #aaa; font-family: monospace; word-break: break-all; }
+        .file-hash { font-size: 0.72em; color: #666; font-family: monospace; }
+        .file-item { padding: 10px; background: #0f3460; border-radius: 4px; margin-bottom: 8px; }
+        .file-item-name { color: #eee; font-weight: bold; word-break: break-all; }
+        .file-item-meta { color: #888; font-size: 0.85em; margin-top: 4px; }
+        .hash-row { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+        .hash-value { color: #8bc34a; font-family: monospace; font-size: 0.78em; word-break: break-all; flex: 1; }
+        .btn-small { padding: 4px 10px; font-size: 12px; }
     </style>
 </head>
 <body>
@@ -1164,7 +1174,7 @@ var adminHTML = `<!DOCTYPE html>
         <h1>Evidence Upload - Admin Panel</h1>
         <div class="version" id="appVersion"></div>
         <div class="card">
-            <h2>Active Sessions</h2>
+            <h2>Active Sessions <span class="refresh-info" id="refreshInfo"></span></h2>
             <table id="sessionsTable">
                 <thead>
                     <tr><th>Token</th><th>Description</th><th>Created</th><th>Expires</th><th>Files</th><th>Actions</th></tr>
@@ -1252,62 +1262,118 @@ var adminHTML = `<!DOCTYPE html>
             return (bytes / 1073741824).toFixed(2) + ' GB';
         }
 
+        function escapeHtml(s) {
+            return String(s == null ? '' : s)
+                .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        }
+
+        function shortHash(hash) {
+            return hash ? hash.substring(0, 12) + '...' : '';
+        }
+
+        function updateTimestamp() {
+            var el = document.getElementById('refreshInfo');
+            if (el) el.textContent = 'auto-refreshes every 5s - updated ' + new Date().toLocaleTimeString();
+        }
+
+        var lastSessionsJSON = '';
+
         async function loadSessions() {
             try {
                 var resp = await fetch('/admin/api/sessions');
                 var sessions = await resp.json();
-                var tbody = document.getElementById('sessionsBody');
-                tbody.innerHTML = sessions.map(function(s) {
-                    return '<tr><td><span class="token-link" onclick="showSessionDetail(\'' + s.token + '\')">' + s.token.substring(0, 16) + '...</span></td><td>' + (s.description || '-') + '</td><td>' + new Date(s.created_at).toLocaleString() + '</td><td>' + new Date(s.expires_at).toLocaleString() + '</td><td>' + s.uploaded_files.length + '</td><td><button class="btn btn-danger" onclick="revokeSession(\'' + s.token + '\')">Revoke</button></td></tr>';
-                }).join('');
+                var raw = JSON.stringify(sessions);
+                if (raw !== lastSessionsJSON) {
+                    lastSessionsJSON = raw;
+                    var tbody = document.getElementById('sessionsBody');
+                    tbody.innerHTML = sessions.map(function(s) {
+                        var files = s.uploaded_files || [];
+                        var fileList = files.length > 0
+                            ? '<div class="file-list">' + files.map(function(f) {
+                                return '<div class="file-name">' + escapeHtml(f.name) + '</div>' +
+                                       '<div class="file-hash">sha256: ' + escapeHtml(shortHash(f.hash)) + '</div>';
+                            }).join('') + '</div>'
+                            : '';
+                        return '<tr><td><span class="token-link" onclick="showSessionDetail(\'' + escapeHtml(s.token) + '\')">' + escapeHtml(s.token.substring(0, 16)) + '...</span></td><td>' + escapeHtml(s.description || '-') + '</td><td>' + new Date(s.created_at).toLocaleString() + '</td><td>' + new Date(s.expires_at).toLocaleString() + '</td><td>' + files.length + fileList + '</td><td><button class="btn btn-danger" onclick="revokeSession(\'' + escapeHtml(s.token) + '\')">Revoke</button></td></tr>';
+                    }).join('');
+                }
+                updateTimestamp();
             } catch(e) { console.error('Failed to load sessions:', e); }
         }
 
-        async function showSessionDetail(token) {
+        var currentDetailToken = null;
+
+        function showSessionDetail(token) {
+            currentDetailToken = token;
+            renderSessionDetail(token, true);
+        }
+
+        async function renderSessionDetail(token, openModal) {
             try {
-                var resp = await fetch('/admin/api/session?token=' + token);
+                var resp = await fetch('/admin/api/session?token=' + encodeURIComponent(token));
+                if (!resp.ok) return;
                 var session = await resp.json();
+                if (currentDetailToken !== token) return;
+                var modalContent = document.querySelector('#detailModal .modal-content');
+                var keepScroll = modalContent.scrollTop;
                 var html = '';
-                html += '<div class="detail-row"><span class="detail-label">Token:</span><span class="detail-value">' + session.token + '</span></div>';
-                html += '<div class="detail-row"><span class="detail-label">Secret:</span><span class="detail-value">' + session.secret + '</span></div>';
-                html += '<div class="detail-row"><span class="detail-label">Description:</span><span class="detail-value">' + (session.description || '-') + '</span></div>';
+                html += '<div class="detail-row"><span class="detail-label">Token:</span><span class="detail-value">' + escapeHtml(session.token) + '</span></div>';
+                html += '<div class="detail-row"><span class="detail-label">Secret:</span><span class="detail-value">' + escapeHtml(session.secret) + '</span></div>';
+                html += '<div class="detail-row"><span class="detail-label">Description:</span><span class="detail-value">' + escapeHtml(session.description || '-') + '</span></div>';
                 html += '<div class="detail-row"><span class="detail-label">Created:</span><span class="detail-value">' + new Date(session.created_at).toLocaleString() + '</span></div>';
                 html += '<div class="detail-row"><span class="detail-label">Expires:</span><span class="detail-value">' + new Date(session.expires_at).toLocaleString() + '</span></div>';
-                html += '<div class="detail-row"><span class="detail-label">Status:</span><span class="detail-value">' + (session.is_locked ? 'Locked to IP: ' + session.uploader_ip : 'Not yet accessed') + '</span></div>';
+                html += '<div class="detail-row"><span class="detail-label">Status:</span><span class="detail-value">' + (session.is_locked ? 'Locked to IP: ' + escapeHtml(session.uploader_ip) : 'Not yet accessed') + '</span></div>';
                 html += '<div class="detail-row"><span class="detail-label">Total Size:</span><span class="detail-value">' + formatSize(session.total_size) + '</span></div>';
                 html += '<div class="detail-row"><span class="detail-label">Files:</span><span class="detail-value">' + session.uploaded_files.length + '</span></div>';
                 if (session.uploaded_files && session.uploaded_files.length > 0) {
                     html += '<h3 style="margin: 20px 0 10px; color: #0f3460;">Uploaded Files</h3>';
                     session.uploaded_files.forEach(function(f) {
-                        html += '<div class="activity-item"><span class="activity-action">' + f.name + '</span> <span class="activity-details">' + formatSize(f.size) + (f.hash ? ' (SHA256: ' + f.hash.substring(0, 16) + '...)' : '') + '</span></div>';
+                        html += '<div class="file-item">';
+                        html += '<div class="file-item-name">' + escapeHtml(f.name) + '</div>';
+                        html += '<div class="file-item-meta">' + formatSize(f.size) + '</div>';
+                        if (f.hash) {
+                            html += '<div class="hash-row"><span class="detail-label">SHA256:</span><code class="hash-value">' + escapeHtml(f.hash) + '</code><button class="btn btn-info btn-small" onclick="copyHash(this, \'' + escapeHtml(f.hash) + '\')">Copy</button></div>';
+                        } else {
+                            html += '<div class="file-item-meta">SHA256 not yet available</div>';
+                        }
+                        html += '</div>';
                     });
                 }
                 if (session.activity && session.activity.length > 0) {
                     html += '<h3 style="margin: 20px 0 10px; color: #0f3460;">Activity History</h3>';
                     session.activity.reverse().forEach(function(a) {
-                        html += '<div class="activity-item"><div><span class="activity-time">' + new Date(a.timestamp).toLocaleString() + '</span> <span class="activity-action">' + a.action + '</span></div><div class="activity-details">IP: ' + a.ip + (a.details ? ' - ' + a.details : '') + '</div></div>';
+                        html += '<div class="activity-item"><div><span class="activity-time">' + new Date(a.timestamp).toLocaleString() + '</span> <span class="activity-action">' + escapeHtml(a.action) + '</span></div><div class="activity-details">IP: ' + escapeHtml(a.ip) + (a.details ? ' - ' + escapeHtml(a.details) : '') + '</div></div>';
                     });
                 }
                 html += '<h3 style="margin: 20px 0 10px; color: #0f3460;">Triage Package</h3>';
                 if (session.triage_package) {
                     var triageLink = baseUrl + '/triage/' + session.token;
-                    html += '<div class="activity-item"><span class="activity-action">Package: ' + session.triage_package + '</span></div>';
-                    html += '<div class="link-box" style="margin-top: 10px;">' + triageLink + '</div>';
-                    html += '<button class="btn btn-primary" onclick="showTriageLink(\'' + session.token + '\')" style="margin-top: 10px;">Copy Link</button>';
-                    html += '<button class="btn" onclick="uploadTriagePackage(\'' + session.token + '\')" style="margin-top: 10px; margin-left: 10px;">Replace</button>';
+                    html += '<div class="activity-item"><span class="activity-action">Package: ' + escapeHtml(session.triage_package) + '</span></div>';
+                    html += '<div class="link-box" style="margin-top: 10px;">' + escapeHtml(triageLink) + '</div>';
+                    html += '<button class="btn btn-primary" onclick="showTriageLink(\'' + escapeHtml(session.token) + '\')" style="margin-top: 10px;">Copy Link</button>';
+                    html += '<button class="btn" onclick="uploadTriagePackage(\'' + escapeHtml(session.token) + '\')" style="margin-top: 10px; margin-left: 10px;">Replace</button>';
                 } else {
                     html += '<p style="color: #888; margin-bottom: 10px;">No triage package uploaded for this session.</p>';
-                    html += '<button class="btn btn-primary" onclick="uploadTriagePackage(\'' + session.token + '\')">Send Triage Package</button>';
+                    html += '<button class="btn btn-primary" onclick="uploadTriagePackage(\'' + escapeHtml(session.token) + '\')">Send Triage Package</button>';
                 }
                 document.getElementById('sessionDetails').innerHTML = html;
-                document.getElementById('detailModal').classList.add('active');
-            } catch(e) { alert('Failed to load session details'); }
+                if (openModal) {
+                    modalContent.scrollTop = 0;
+                    document.getElementById('detailModal').classList.add('active');
+                } else {
+                    modalContent.scrollTop = keepScroll;
+                }
+            } catch(e) { if (openModal) alert('Failed to load session details'); }
         }
 
         function showCreateModal() { document.getElementById('createModal').classList.add('active'); }
         function closeModal() { document.getElementById('createModal').classList.remove('active'); }
         function closeLinkModal() { document.getElementById('linkModal').classList.remove('active'); }
-        function closeDetailModal() { document.getElementById('detailModal').classList.remove('active'); }
+        function closeDetailModal() {
+            document.getElementById('detailModal').classList.remove('active');
+            currentDetailToken = null;
+        }
 
         async function createSession() {
             var duration = parseInt(document.getElementById('duration').value) || 24;
@@ -1360,8 +1426,28 @@ var adminHTML = `<!DOCTYPE html>
             loadSessions();
         }
 
+        function copyText(text) {
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(text);
+                return;
+            }
+            var ta = document.createElement('textarea');
+            ta.value = text;
+            document.body.appendChild(ta);
+            ta.select();
+            document.execCommand('copy');
+            document.body.removeChild(ta);
+        }
+
+        function copyHash(btn, hash) {
+            copyText(hash);
+            var original = btn.textContent;
+            btn.textContent = 'Copied!';
+            setTimeout(function() { btn.textContent = original; }, 1200);
+        }
+
         function copyLink() {
-            navigator.clipboard.writeText(document.getElementById('generatedLink').textContent);
+            copyText(document.getElementById('generatedLink').textContent);
             alert('Link copied to clipboard!');
         }
 
@@ -1413,11 +1499,19 @@ var adminHTML = `<!DOCTYPE html>
         }
 
         function copyTriageLink() {
-            navigator.clipboard.writeText(document.getElementById('triageLink').textContent);
+            copyText(document.getElementById('triageLink').textContent);
             alert('Triage link copied to clipboard!');
         }
 
-        loadBaseUrl().then(function() { loadSessions(); });
+        function startAutoRefresh() {
+            setInterval(function() {
+                if (document.hidden) return;
+                loadSessions();
+                if (currentDetailToken) renderSessionDetail(currentDetailToken, false);
+            }, 5000);
+        }
+
+        loadBaseUrl().then(function() { loadSessions(); startAutoRefresh(); });
     </script>
 </body>
 </html>`

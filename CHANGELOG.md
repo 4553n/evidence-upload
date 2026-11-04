@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.2.1] - 2026-11-04
+
+### Added
+- **Live admin panel updates** - Sessions table and open session detail now auto-refresh every 5 seconds
+  - Upload counter and total size update without page reload
+  - "updated" timestamp indicator; refresh pauses while the browser tab is hidden
+- **File names and hashes in admin panel** - Sessions table lists every uploaded file with its SHA-256
+  - Session detail shows the full 64-character SHA-256 per file with a copy button
+- **Unix release archives** - Linux/macOS builds are now shipped as `.tar.gz` so the executable bit survives download (bare binaries downloaded over HTTP lose it and fail with "permission denied")
+
+### Fixed
+- **Data race in session list APIs** - `ListSessions`/`GetSessionDetail` return deep-copy snapshots, so admin JSON encoding no longer races with concurrent uploads
+- **XSS via uploaded filenames in admin panel** - All uploader-controlled strings are now HTML-escaped before rendering
+- **Clipboard copy over plain HTTP** - Copy buttons use a fallback where `navigator.clipboard` is unavailable (non-HTTPS contexts)
+
 ## [2.2.0] - 2026-08-11
 
 ### Added
