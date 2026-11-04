@@ -154,6 +154,15 @@ func SanitizeFilename(name string) string {
 	if name == "" {
 		name = "unnamed"
 	}
+	// Keep well under the 255-byte filesystem limit. Output is pure ASCII.
+	if len(name) > 200 {
+		ext := filepath.Ext(name)
+		base := strings.TrimSuffix(name, ext)
+		if len(base) > 200-len(ext) {
+			base = base[:200-len(ext)]
+		}
+		name = base + ext
+	}
 	return name
 }
 

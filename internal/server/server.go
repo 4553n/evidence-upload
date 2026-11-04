@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"sort"
 	"strconv"
 	"strings"
@@ -70,7 +71,50 @@ func (s *Server) routes() {
 
 func (s *Server) ListenAndServe(addr string) error {
 	log.Printf("Evidence Upload Server starting on %s", addr)
-	return http.ListenAndServe(addr, s.mux)
+	return http.ListenAndServe(addr, s.withRecovery(s.mux))
+}
+
+// statusRecorder captures the response status for request logging.
+type statusRecorder struct {
+	http.ResponseWriter
+	status int
+}
+
+func (r *statusRecorder) WriteHeader(code int) {
+	r.status = code
+	r.ResponseWriter.WriteHeader(code)
+}
+
+// withRecovery logs every request and converts handler panics into a proper
+// 500 response instead of silently killing the connection (which surfaces in
+// browsers as an opaque "Load failed" / "Failed to fetch").
+// Only the URL path is logged; query strings may carry tokens and secrets.
+func (s *Server) withRecovery(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		start := time.Now()
+		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
+		defer func() {
+			if err := recover(); err != nil {
+				log.Printf("PANIC on %s %s: %v\n%s", r.Method, r.URL.Path, err, debug.Stack())
+				if rec.status == http.StatusOK {
+					writeJSONError(rec, http.StatusInternalServerError, "internal server error")
+				}
+			}
+			log.Printf("%s %s -> %d (%s)", r.Method, r.URL.Path, rec.status, time.Since(start).Round(time.Millisecond))
+		}()
+		next.ServeHTTP(rec, r)
+	})
+}
+
+// writeJSONError sends a JSON error body so admin UI fetches can surface the
+// message instead of failing to parse plain-text responses.
+func writeJSONError(w http.ResponseWriter, status int, msg string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": false,
+		"error":   msg,
+	})
 }
 
 func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
@@ -616,13 +660,13 @@ func (s *Server) handleAdminSessions(w http.ResponseWriter, r *http.Request) {
 func (s *Server) handleAdminSessionDetail(w http.ResponseWriter, r *http.Request) {
 	token := r.URL.Query().Get("token")
 	if token == "" {
-		http.Error(w, "Token required", http.StatusBadRequest)
+		writeJSONError(w, http.StatusBadRequest, "Token required")
 		return
 	}
 
 	session, ok := s.sessions.GetSessionDetail(token)
 	if !ok {
-		http.Error(w, "Session not found", http.StatusNotFound)
+		writeJSONError(w, http.StatusNotFound, "Session not found")
 		return
 	}
 
@@ -632,7 +676,7 @@ func (s *Server) handleAdminSessionDetail(w http.ResponseWriter, r *http.Request
 
 func (s *Server) handleAdminRevoke(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		writeJSONError(w, http.StatusMethodNotAllowed, "Method not allowed")
 		return
 	}
 
@@ -642,13 +686,13 @@ func (s *Server) handleAdminRevoke(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid request", http.StatusBadRequest)
+		writeJSONError(w, http.StatusBadRequest, "Invalid request: "+err.Error())
 		return
 	}
 
 	session, ok := s.sessions.RevokeSession(req.Token)
 	if !ok {
-		http.Error(w, "Session not found", http.StatusNotFound)
+		writeJSONError(w, http.StatusNotFound, "Session not found or already revoked")
 		return
 	}
 
@@ -677,7 +721,7 @@ func (s *Server) handleAdminRevoke(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleAdminCreate(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		writeJSONError(w, http.StatusMethodNotAllowed, "Method not allowed")
 		return
 	}
 
@@ -687,13 +731,13 @@ func (s *Server) handleAdminCreate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "Invalid request", http.StatusBadRequest)
+		writeJSONError(w, http.StatusBadRequest, "Invalid request: "+err.Error())
 		return
 	}
 
 	session, err := s.sessions.CreateSession(req.Duration, req.Description)
 	if err != nil {
-		http.Error(w, "Failed to create session", http.StatusInternalServerError)
+		writeJSONError(w, http.StatusInternalServerError, "Failed to create session: "+err.Error())
 		return
 	}
 
@@ -1277,12 +1321,32 @@ var adminHTML = `<!DOCTYPE html>
             if (el) el.textContent = 'auto-refreshes every 5s - updated ' + new Date().toLocaleTimeString();
         }
 
+        // fetch wrapper: separates "server unreachable" from "server said no",
+        // so the UI shows an actionable message instead of "Load failed".
+        async function apiFetch(url, opts) {
+            var resp;
+            try {
+                resp = await fetch(url, opts);
+            } catch(e) {
+                throw new Error('Could not reach the server (' + e.message + '). Check that the server (and any tunnel) is still running, then try again.');
+            }
+            var text = await resp.text();
+            var data = null;
+            try { data = text ? JSON.parse(text) : null; } catch(e) {}
+            if (!resp.ok) {
+                throw new Error('Server error (HTTP ' + resp.status + '): ' + (data && data.error ? data.error : (text ? text.substring(0, 200) : 'no details')));
+            }
+            if (data === null) {
+                throw new Error('Server returned an empty or invalid response (HTTP ' + resp.status + ')');
+            }
+            return data;
+        }
+
         var lastSessionsJSON = '';
 
         async function loadSessions() {
             try {
-                var resp = await fetch('/admin/api/sessions');
-                var sessions = await resp.json();
+                var sessions = await apiFetch('/admin/api/sessions');
                 var raw = JSON.stringify(sessions);
                 if (raw !== lastSessionsJSON) {
                     lastSessionsJSON = raw;
@@ -1311,9 +1375,7 @@ var adminHTML = `<!DOCTYPE html>
 
         async function renderSessionDetail(token, openModal) {
             try {
-                var resp = await fetch('/admin/api/session?token=' + encodeURIComponent(token));
-                if (!resp.ok) return;
-                var session = await resp.json();
+                var session = await apiFetch('/admin/api/session?token=' + encodeURIComponent(token));
                 if (currentDetailToken !== token) return;
                 var modalContent = document.querySelector('#detailModal .modal-content');
                 var keepScroll = modalContent.scrollTop;
@@ -1378,12 +1440,11 @@ var adminHTML = `<!DOCTYPE html>
         async function createSession() {
             var duration = parseInt(document.getElementById('duration').value) || 24;
             var description = document.getElementById('description').value;
-            var resp = await fetch('/admin/api/create', {
+            var session = await apiFetch('/admin/api/create', {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({duration: duration * 3600000000000, description: description})
             });
-            var session = await resp.json();
             var link = baseUrl + '/?token=' + session.token + '&secret=' + session.secret;
             document.getElementById('generatedLink').textContent = link;
             closeModal();
@@ -1409,12 +1470,11 @@ var adminHTML = `<!DOCTYPE html>
             var token = pendingRevokeToken;
             closeRevokeModal();
             try {
-                var resp = await fetch('/admin/api/revoke', {
+                var result = await apiFetch('/admin/api/revoke', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({token: token, analyst_name: analystName})
                 });
-                var result = await resp.json();
                 if (result.coc_path) {
                     alert('Session revoked. Chain of Custody PDF saved to:\\n' + result.coc_path);
                 } else if (result.warning) {
@@ -1467,11 +1527,10 @@ var adminHTML = `<!DOCTYPE html>
             formData.append('file', file);
 
             try {
-                var resp = await fetch('/admin/api/triage-package', {
+                var result = await apiFetch('/admin/api/triage-package', {
                     method: 'POST',
                     body: formData
                 });
-                var result = await resp.json();
                 if (result.success) {
                     var triageLink = baseUrl + '/triage/' + pendingTriageToken;
                     document.getElementById('triageLink').textContent = triageLink;

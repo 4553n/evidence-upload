@@ -13,9 +13,19 @@ All notable changes to this project will be documented in this file.
 - **Unix release archives** - Linux/macOS builds are now shipped as `.tar.gz` so the executable bit survives download (bare binaries downloaded over HTTP lose it and fail with "permission denied")
 
 ### Fixed
-- **Data race in session list APIs** - `ListSessions`/`GetSessionDetail` return deep-copy snapshots, so admin JSON encoding no longer races with concurrent uploads
+- **Admin panel "Load failed" on revoke / stale data** - Root cause: admin APIs returned live session pointers while uploads mutated them
+  - The resulting data races could corrupt or abort in-flight admin responses, which browsers surface as an opaque "Load failed" / "Failed to fetch" on the next request
+  - `GetSession`/`GetSessionDetail`/`ListSessions` now return deep-copy snapshots; all mutation happens inside `SessionManager` under its lock
+- **Session folder names capped at 64 chars** - Long descriptions caused `mkdir ...: file name too long` and silently failed CoC generation
+- **CoC generation serialized** - A manual revoke racing the expired-session cleanup could interleave writes to the same `CHAIN_OF_CUSTODY.pdf`
 - **XSS via uploaded filenames in admin panel** - All uploader-controlled strings are now HTML-escaped before rendering
 - **Clipboard copy over plain HTTP** - Copy buttons use a fallback where `navigator.clipboard` is unavailable (non-HTTPS contexts)
+
+### Changed
+- **Request logging** - Every request is logged as `METHOD /path -> status (duration)`; query strings are omitted so tokens/secrets never reach logs
+- **Panic recovery** - Handler panics are logged with a stack trace and returned as a JSON 500 instead of silently killing the connection
+- **Actionable admin errors** - Admin API errors return JSON; the UI distinguishes "server unreachable" from "server returned an error" instead of showing "Load failed"
+- **Regression test** - Fuzz-style CoC test covering hostile descriptions/analyst names (parens, control chars, emoji, RTL, truncation boundaries)
 
 ## [2.2.0] - 2026-08-11
 

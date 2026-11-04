@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"evidence-upload/internal/models"
@@ -23,7 +24,14 @@ const (
 	colWidth    = pageWidth - marginLeft - marginRight
 )
 
+// cocMu serializes CoC generation: a manual revoke and the expired-session
+// cleanup can otherwise write the same PDF concurrently and corrupt it.
+var cocMu sync.Mutex
+
 func GenerateCoC(session *models.Session, analystName, storagePath string) (string, error) {
+	cocMu.Lock()
+	defer cocMu.Unlock()
+
 	folderDir := filepath.Join(storagePath, session.FolderName)
 	pdfPath := filepath.Join(folderDir, "CHAIN_OF_CUSTODY.pdf")
 

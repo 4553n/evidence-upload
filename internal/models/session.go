@@ -73,6 +73,11 @@ func SanitizeFolderName(name string) string {
 	if name == "" {
 		name = "unnamed"
 	}
+	// Keep well under the 255-byte filesystem limit for path components.
+	// The result is pure ASCII ([^\w\-.] is replaced), so runes == bytes here.
+	if len(name) > 64 {
+		name = strings.Trim(name[:64], "_.")
+	}
 	return name
 }
 
@@ -117,7 +122,7 @@ func (sm *SessionManager) GetSession(token string) (*Session, bool) {
 		return nil, false
 	}
 
-	return session, true
+	return session.snapshot(), true
 }
 
 func (sm *SessionManager) CleanupExpired() []*Session {
