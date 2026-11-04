@@ -55,9 +55,15 @@ func sessionWith(name, desc string, files []models.UploadedFile, acts []models.A
 
 func TestGenerateCoCNastyInputs(t *testing.T) {
 	base := t.TempDir()
+	analysts := []string{
+		"",
+		"plain",
+		"Jörg (SOC) — Œ",
+		"emoji 😀 кириллицa \"quoted\" (x)",
+	}
 	idx := 0
 	for _, s := range nastyStrings {
-		for _, analyst := range nastyStrings {
+		for _, analyst := range analysts {
 			idx++
 			desc := "desc " + s
 			name := models.SanitizeFolderName(desc)
@@ -75,7 +81,7 @@ func TestGenerateCoCNastyInputs(t *testing.T) {
 						t.Errorf("PANIC for analyst=%q desc=%q: %v", analyst, desc, r)
 					}
 				}()
-				p, err := GenerateCoC(sess, analyst, base)
+				p, err := GenerateCoC(sess, analyst, base, "test")
 				if err != nil {
 					t.Errorf("error for analyst=%q desc=%q: %v", analyst, desc, err)
 					return

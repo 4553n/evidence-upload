@@ -734,7 +734,7 @@ func (s *Server) handleAdminRevoke(w http.ResponseWriter, r *http.Request) {
 		analystName = "Unknown Analyst"
 	}
 
-	cocPath, err := custody.GenerateCoC(session, analystName, s.storage.BasePath())
+	cocPath, err := custody.GenerateCoC(session, analystName, s.storage.BasePath(), s.cfg.Version)
 	if err != nil {
 		log.Printf("Failed to generate CoC for session %s: %v", req.Token, err)
 		w.Header().Set("Content-Type", "application/json")

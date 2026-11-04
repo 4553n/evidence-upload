@@ -128,7 +128,7 @@ func main() {
 		for range ticker.C {
 			expired := sessions.CleanupExpired()
 			for _, s := range expired {
-				cocPath, err := custody.GenerateCoC(s, "System (expired)", cfg.StoragePath)
+				cocPath, err := custody.GenerateCoC(s, "System (expired)", cfg.StoragePath, Version)
 				if err != nil {
 					log.Printf("Failed to generate CoC for expired session %s: %v", s.Token[:16], err)
 				} else {

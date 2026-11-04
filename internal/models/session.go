@@ -50,6 +50,11 @@ func (s *Session) snapshot() *Session {
 	return &cp
 }
 
+// Clone returns a deep copy of the session.
+func (s *Session) Clone() *Session {
+	return s.snapshot()
+}
+
 type SessionManager struct {
 	sessions map[string]*Session
 	mu       sync.RWMutex

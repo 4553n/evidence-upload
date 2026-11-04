@@ -277,6 +277,11 @@ When a session is revoked or expires, a Chain of Custody PDF is automatically ge
 
 The PDF is saved as `CHAIN_OF_CUSTODY.pdf` in the case folder with a `.sha256` sidecar file.
 
+Text is rendered with embedded DejaVu Sans fonts (Bitstream Vera license), so case
+descriptions and names in UTF-8 — em-dashes, umlauts, Cyrillic, Greek, Hebrew —
+render correctly. Characters the fonts cannot display (emoji, CJK) are marked
+with `�` rather than breaking document generation.
+
 ## Tunnel Support (bore)
 
 For internet access without router configuration:
