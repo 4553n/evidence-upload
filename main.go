@@ -60,6 +60,14 @@ func main() {
 		}
 		tlsCert, tlsKey, tlsFingerprint = certPath, keyPath, fp
 	}
+	// Cloudflare tunnels terminate TLS at the edge and forward to a plain HTTP
+	// origin on loopback; an auto-generated self-signed certificate would only
+	// break that hop (cloudflared cannot verify it). Keep the origin plain
+	// unless the user configured certificates explicitly.
+	if cfg.Tunnel == "cloudflare" && cfg.TLSCert == "" && tlsCert != "" {
+		fmt.Println("TLS: disabled on the Cloudflare tunnel origin (the edge already serves HTTPS to uploaders)")
+		tlsCert, tlsKey, tlsFingerprint = "", "", ""
+	}
 
 	store, err := storage.New(cfg.StoragePath, cfg.BackupPath)
 	if err != nil {

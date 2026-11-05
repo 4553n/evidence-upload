@@ -59,7 +59,7 @@ func Load() *Config {
 	flag.StringVar(&cfg.AlertLogFile, "alert-log", "./alerts.log", "Log file for security alerts")
 	flag.StringVar(&cfg.ExternalIP, "external-ip", getEnvOrConfig(configFile, "EXTERNAL_IP", ""), "External/public IP for internet access (auto-detected if empty)")
 	flag.StringVar(&cfg.BaseURL, "base-url", getEnvOrConfig(configFile, "BASE_URL", ""), "Base URL for generated links (e.g., https://myhost:8443)")
-	flag.StringVar(&cfg.Tunnel, "tunnel", getEnvOrConfig(configFile, "TUNNEL", ""), "Tunnel provider: 'bore', 'cloudflare', or 'external'")
+	flag.StringVar(&cfg.Tunnel, "tunnel", getEnvOrConfig(configFile, "TUNNEL", "bore"), "Tunnel provider: 'bore', 'cloudflare', or 'external' (empty value disables the tunnel)")
 	flag.StringVar(&cfg.BorePath, "bore-path", getEnvOrConfig(configFile, "BORE_PATH", ""), "Path to bore binary (auto-detected if empty)")
 	flag.StringVar(&cfg.CloudflarePath, "cloudflare-path", getEnvOrConfig(configFile, "CLOUDFLARE_PATH", ""), "Path to cloudflared binary (auto-detected if empty)")
 	flag.StringVar(&cfg.CloudflareDomain, "cloudflare-domain", getEnvOrConfig(configFile, "CLOUDFLARE_DOMAIN", ""), "Custom domain for Cloudflare tunnel (e.g., yourdomain.com)")
@@ -69,7 +69,7 @@ func Load() *Config {
 	flag.StringVar(&cfg.AdminToken, "admin-token", getEnvOrConfig(configFile, "ADMIN_TOKEN", ""), "Admin panel token (auto-generated if empty)")
 	flag.StringVar(&cfg.TLSCert, "tls-cert", getEnvOrConfig(configFile, "TLS_CERT", ""), "TLS certificate file for HTTPS (enables HTTPS with -tls-key)")
 	flag.StringVar(&cfg.TLSKey, "tls-key", getEnvOrConfig(configFile, "TLS_KEY", ""), "TLS private key file for HTTPS")
-	flag.BoolVar(&cfg.TLSSelfSigned, "tls-selfsigned", false, "Serve HTTPS with an auto-generated self-signed certificate (stored under <storage>/.tls/)")
+	flag.BoolVar(&cfg.TLSSelfSigned, "tls-selfsigned", true, "Serve HTTPS with an auto-generated self-signed certificate (disable with -tls-selfsigned=false)")
 	flag.BoolVar(&cfg.ShowVersion, "version", false, "Show version and exit")
 	flag.BoolVar(&cfg.NoBrowser, "no-browser", false, "Don't automatically open browser on startup")
 

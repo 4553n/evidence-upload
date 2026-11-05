@@ -127,7 +127,7 @@ func (b *BoreTunnel) Start(localPort int) (string, error) {
 	publicURL := fmt.Sprintf("http://bore.pub:%d", publicPort)
 	b.publicURL = publicURL
 
-	fmt.Printf("Tunnel established: %s -> localhost:%d\n", publicURL, localPort)
+	fmt.Printf("Tunnel established: bore.pub:%d -> localhost:%d\n", publicPort, localPort)
 	return publicURL, nil
 }
 

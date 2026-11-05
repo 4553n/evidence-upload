@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.2.5] - 2026-11-05
+
+### Changed
+- **Secure defaults** - Running with no switches now enables the bore tunnel and HTTPS (auto-generated self-signed certificate); previously the server started plain-HTTP and tunnel-less
+  - `-tunnel` defaults to `bore` (disable with `-tunnel=` for pure LAN use)
+  - `-tls-selfsigned` defaults to `true` (disable with `-tls-selfsigned=false`, or use `-tls-cert`/`-tls-key` for real certificates)
+  - With `-tunnel cloudflare`, the auto-generated local TLS is skipped automatically (the Cloudflare edge serves HTTPS and expects a plain loopback origin); explicit `-tls-cert`/`-tls-key` are still honored
+- **User manual updated** to v2.2.5: corrected cover version, new defaults documented, layout verified (no split figures, no header/footer collisions)
+
 ## [2.2.4] - 2026-11-05
 
 ### Added

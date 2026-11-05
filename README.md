@@ -6,7 +6,7 @@ A secure forensic evidence data upload web application with session-based authen
 
 An illustrated user manual — installation, admin panel, uploader flow, Chain of
 Custody, tunnels, HTTPS, and troubleshooting — is available at
-[`docs/user-manual/Evidence-Upload-User-Manual-v2.2.4.pdf`](docs/user-manual/Evidence-Upload-User-Manual-v2.2.4.pdf)
+[`docs/user-manual/Evidence-Upload-User-Manual-v2.2.5.pdf`](docs/user-manual/Evidence-Upload-User-Manual-v2.2.5.pdf)
 (HTML source and screenshots in the same directory).
 
 ## Features
@@ -68,14 +68,18 @@ go build -o evidence-upload.exe .
 ### Basic Usage
 
 ```bash
-# Start server on default port 8443
+# Start server on default port 8443 — with secure defaults:
+# a public bore tunnel and HTTPS (self-signed certificate)
 ./evidence-upload
 
 # Start with custom storage path
 ./evidence-upload -storage /path/to/evidence
 
-# Start with bore tunnel for internet access
-./evidence-upload -tunnel bore
+# LAN only, no tunnel
+./evidence-upload -tunnel=
+
+# Plain HTTP (not recommended)
+./evidence-upload -tls-selfsigned=false -tunnel=
 
 # Start without auto-opening browser
 ./evidence-upload -no-browser
@@ -96,7 +100,7 @@ go build -o evidence-upload.exe .
 | `-admin-token` | auto-generated | Admin panel token (printed at startup) |
 | `-tls-cert` | `""` | TLS certificate file for HTTPS (use with `-tls-key`) |
 | `-tls-key` | `""` | TLS private key file for HTTPS |
-| `-tls-selfsigned` | `false` | Serve HTTPS with an auto-generated self-signed certificate |
+| `-tls-selfsigned` | `true` | Serve HTTPS with an auto-generated self-signed certificate |
 | `-max-size` | `10737418240` (10GB) | Maximum upload size in bytes |
 | `-alert-email` | `""` | Email address for security alerts |
 | `-alert-webhook` | `""` | Webhook URL for alerts (Slack/Discord/etc) |
@@ -104,7 +108,7 @@ go build -o evidence-upload.exe .
 | `-alert-log` | `./alerts.log` | Log file for security alerts |
 | `-external-ip` | auto-detected | External/public IP for internet access |
 | `-base-url` | auto-detected | Base URL for generated links |
-| `-tunnel` | `""` | Tunnel provider: `bore`, `cloudflare`, or `external` |
+| `-tunnel` | `bore` | Tunnel provider: `bore`, `cloudflare`, or `external` (empty value disables) |
 | `-bore-path` | auto-detected | Path to bore binary |
 | `-cloudflare-path` | auto-detected | Path to cloudflared binary |
 | `-cloudflare-domain` | `""` | Custom domain for Cloudflare tunnel (e.g., yourdomain.com) |
@@ -295,9 +299,10 @@ with `�` rather than breaking document generation.
 
 ## HTTPS / TLS
 
-The server can serve HTTPS directly, so evidence and credentials are encrypted
-end-to-end between the uploader's browser and your server — even through a
-plaintext tunnel like bore, only ciphertext crosses the network.
+HTTPS is **enabled by default** (auto-generated self-signed certificate), so
+evidence and credentials are encrypted end-to-end between the uploader's browser
+and your server — even through a plaintext tunnel like bore, only ciphertext
+crosses the network.
 
 ```bash
 # Zero-config: auto-generated self-signed certificate (stored in <storage>/.tls/)

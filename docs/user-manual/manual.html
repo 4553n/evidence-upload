@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Evidence Upload — User Manual v2.2.4</title>
+<title>Evidence Upload — User Manual v2.2.5</title>
 <style>
   @page { size: A4; margin: 0; }
   :root {
@@ -79,9 +79,12 @@
     margin: 14px 0 18px;
     text-align: center;
     page-break-inside: avoid;
+    break-inside: avoid;
   }
   figure img {
     max-width: 100%;
+    max-height: 225mm;
+    object-fit: contain;
     border: 1px solid var(--line);
     border-radius: 6px;
   }
@@ -143,7 +146,7 @@
   <h1>Evidence Upload</h1>
   <div class="sub">User Manual</div>
   <div class="meta">
-    <strong>Version 2.2.3</strong><br>
+    <strong>Version 2.2.5</strong><br>
     November 2026<br><br>
     Secure forensic evidence collection, upload sessions,<br>
     and Chain of Custody documentation
@@ -204,8 +207,8 @@
   further steps are needed:
 </p>
 <pre><span class="c"># macOS (Apple Silicon)</span>
-curl -LO https://github.com/4553n/evidence-upload/releases/download/v2.2.4/evidence-upload-v2.2.4-macos-arm64.tar.gz
-tar -xzf evidence-upload-v2.2.4-macos-arm64.tar.gz
+curl -LO https://github.com/4553n/evidence-upload/releases/download/v2.2.5/evidence-upload-v2.2.5-macos-arm64.tar.gz
+tar -xzf evidence-upload-v2.2.5-macos-arm64.tar.gz
 
 <span class="c"># macOS (Intel) — use the -macos-amd64 archive</span>
 <span class="c"># Linux — use the -linux-amd64 archive</span>
@@ -221,16 +224,31 @@ tar -xzf evidence-upload-v2.2.4-macos-arm64.tar.gz
 </div>
 
 <h3>2.2 First run</h3>
-<p>Start the server from a terminal. With no flags it listens on port <code>8443</code> and stores evidence in <code>./evidence</code>:</p>
-<pre>$ ./evidence-upload-v2.2.4-macos-arm64
-Evidence Upload Server v2.2.4 starting on :8443
+<p>
+  Start the server from a terminal. With no flags it listens on port <code>8443</code>,
+  stores evidence in <code>./evidence</code>, and applies <strong>secure defaults</strong>:
+  a public <code>bore</code> tunnel and HTTPS with an auto-generated self-signed
+  certificate. On first run the tunnel tool is fetched automatically:
+</p>
+<pre>$ ./evidence-upload-v2.2.5-macos-arm64
+Detected external IP: 203.0.113.44
+bore not found. Installing...
+Downloading bore v0.6.0 from https://github.com/ekzhang/bore/releases/download/…
+bore installed to bore
+INFO bore_cli::client: listening at bore.pub:41739
+Tunnel established: bore.pub:41739 -&gt; localhost:8443
+Evidence Upload Server v2.2.5 starting on :8443
 Storage: ./evidence
-Base URL:
+Base URL: https://bore.pub:41739
 <span class="k">Admin token: 3f2a91c0e7b4d5a8c1e2f304b5d6a7c8</span>  <span class="c">(keep private; set via -admin-token or ADMIN_TOKEN)</span>
+TLS: HTTPS enabled (cert: evidence/.tls/selfsigned-cert.pem)
+TLS fingerprint (SHA-256): 00:0B:85:88:D8:00:81:A7:84:4A:82:C3:BC:19:2F:…
 Opening admin interface...</pre>
 <p>
   The browser opens the admin panel automatically, pre-authenticated with the
   admin token. Use <code>-no-browser</code> to suppress the auto-open.
+  To run without a tunnel (pure LAN), pass <code>-tunnel=</code>; for plain HTTP,
+  pass <code>-tls-selfsigned=false</code>.
 </p>
 <div class="callout info">
   <strong>The admin token is your password.</strong>
@@ -411,7 +429,7 @@ Opening admin interface...</pre>
   <tr><td><code>-admin-token</code></td><td>auto-generated</td><td>Admin panel token (printed at startup)</td></tr>
   <tr><td><code>-tls-cert</code></td><td><code>""</code></td><td>TLS certificate file for HTTPS (use with <code>-tls-key</code>)</td></tr>
   <tr><td><code>-tls-key</code></td><td><code>""</code></td><td>TLS private key file for HTTPS</td></tr>
-  <tr><td><code>-tls-selfsigned</code></td><td><code>false</code></td><td>Serve HTTPS with an auto-generated self-signed certificate</td></tr>
+  <tr><td><code>-tls-selfsigned</code></td><td><code>true</code></td><td>Serve HTTPS with an auto-generated self-signed certificate</td></tr>
   <tr><td><code>-max-size</code></td><td><code>10737418240</code></td><td>Maximum upload size in bytes (10 GB)</td></tr>
   <tr><td><code>-alert-email</code></td><td><code>""</code></td><td>Email address for security alerts</td></tr>
   <tr><td><code>-alert-webhook</code></td><td><code>""</code></td><td>Webhook URL for alerts (Slack/Discord/etc.)</td></tr>
@@ -419,7 +437,7 @@ Opening admin interface...</pre>
   <tr><td><code>-alert-log</code></td><td><code>./alerts.log</code></td><td>Log file for security alerts</td></tr>
   <tr><td><code>-external-ip</code></td><td>auto-detected</td><td>External/public IP for internet access</td></tr>
   <tr><td><code>-base-url</code></td><td>auto-detected</td><td>Base URL used in generated links</td></tr>
-  <tr><td><code>-tunnel</code></td><td><code>""</code></td><td>Tunnel provider: <code>bore</code>, <code>cloudflare</code>, or <code>external</code></td></tr>
+  <tr><td><code>-tunnel</code></td><td><code>bore</code></td><td>Tunnel provider: <code>bore</code>, <code>cloudflare</code>, or <code>external</code> (empty value disables)</td></tr>
   <tr><td><code>-bore-path</code></td><td>auto-detected</td><td>Path to the bore binary</td></tr>
   <tr><td><code>-cloudflare-path</code></td><td>auto-detected</td><td>Path to the cloudflared binary</td></tr>
   <tr><td><code>-cloudflare-domain</code></td><td><code>""</code></td><td>Custom domain for the Cloudflare tunnel</td></tr>
@@ -452,7 +470,8 @@ CLOUDFLARE_DOMAIN=evidence.example.com</pre>
 <h2 class="pb">12. Tunnels and Remote Access</h2>
 <p>
   When uploaders are on the internet, a tunnel exposes the server without opening
-  firewall ports. Choose the provider with <code>-tunnel</code>.
+  firewall ports. A <code>bore</code> tunnel is <strong>started by default</strong>;
+  choose a different provider or disable the tunnel with <code>-tunnel</code>.
 </p>
 <table>
   <tr><th>Mode</th><th>Transport</th><th>Notes</th></tr>
@@ -578,7 +597,7 @@ CLOUDFLARE_DOMAIN=evidence.example.com</pre>
   </tr>
   <tr>
     <td>Garbled characters in old CoC PDFs</td>
-    <td>Fixed in v2.2.4 (embedded Unicode fonts). Documents generated by older
+    <td>Fixed in v2.2.3 (embedded Unicode fonts). Documents generated by older
     versions remain valid; their text layer used Latin-1 fonts.</td>
   </tr>
 </table>
@@ -596,7 +615,7 @@ $ sha256sum -c SHA256SUMS            <span class="c"># Linux</span></pre>
   <li><strong>DejaVu fonts</strong> (embedded in the CoC generator) — Bitstream Vera / DejaVu license; the full text ships in <code>internal/custody/fonts/LICENSE-DejaVu.txt</code></li>
 </ul>
 <p class="small" style="margin-top:22px">
-  Evidence Upload v2.2.4 — User Manual · Generated 2026-11-05 ·
+  Evidence Upload v2.2.5 — User Manual · Generated 2026-11-05 ·
   Interfaces shown are from the v2.2.x series.
 </p>
 
