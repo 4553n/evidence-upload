@@ -4,9 +4,9 @@ A secure forensic evidence data upload web application with session-based authen
 
 ## User Manual
 
-A illustrated user manual — installation, admin panel, uploader flow, Chain of
-Custody, tunnels, and troubleshooting — is available at
-[`docs/user-manual/Evidence-Upload-User-Manual-v2.2.3.pdf`](docs/user-manual/Evidence-Upload-User-Manual-v2.2.3.pdf)
+An illustrated user manual — installation, admin panel, uploader flow, Chain of
+Custody, tunnels, HTTPS, and troubleshooting — is available at
+[`docs/user-manual/Evidence-Upload-User-Manual-v2.2.4.pdf`](docs/user-manual/Evidence-Upload-User-Manual-v2.2.4.pdf)
 (HTML source and screenshots in the same directory).
 
 ## Features
@@ -94,6 +94,9 @@ go build -o evidence-upload.exe .
 | `-expire` | `24h` | Default session expiration duration |
 | `-secret` | auto-generated | HMAC secret key |
 | `-admin-token` | auto-generated | Admin panel token (printed at startup) |
+| `-tls-cert` | `""` | TLS certificate file for HTTPS (use with `-tls-key`) |
+| `-tls-key` | `""` | TLS private key file for HTTPS |
+| `-tls-selfsigned` | `false` | Serve HTTPS with an auto-generated self-signed certificate |
 | `-max-size` | `10737418240` (10GB) | Maximum upload size in bytes |
 | `-alert-email` | `""` | Email address for security alerts |
 | `-alert-webhook` | `""` | Webhook URL for alerts (Slack/Discord/etc) |
@@ -266,9 +269,10 @@ sessions, take over upload links, and revoke sessions.**
 - The upload flow (`/api/...`) does **not** use the admin token — uploaders
   authenticate with their session token+secret as before
 
-**Treat the admin token like a password.** Prefer Cloudflare Tunnel (HTTPS) over
-bore (plaintext TCP) when exposing the admin panel; with Cloudflare you can also
-front it with Cloudflare Access for SSO. Upload secrets are never returned by the
+**Treat the admin token like a password.** bore tunnels are plaintext TCP — pair
+them with `-tls-selfsigned` (or your own certificate via `-tls-cert`/`-tls-key`)
+so traffic is encrypted end-to-end, or use Cloudflare Tunnel (HTTPS), optionally
+fronted with Cloudflare Access for SSO. Upload secrets are never returned by the
 session list API — only the per-session detail endpoint provides them.
 
 ## Chain of Custody PDF
@@ -289,6 +293,29 @@ descriptions and names in UTF-8 — em-dashes, umlauts, Cyrillic, Greek, Hebrew 
 render correctly. Characters the fonts cannot display (emoji, CJK) are marked
 with `�` rather than breaking document generation.
 
+## HTTPS / TLS
+
+The server can serve HTTPS directly, so evidence and credentials are encrypted
+end-to-end between the uploader's browser and your server — even through a
+plaintext tunnel like bore, only ciphertext crosses the network.
+
+```bash
+# Zero-config: auto-generated self-signed certificate (stored in <storage>/.tls/)
+./evidence-upload -tls-selfsigned
+
+# Your own certificate (removes browser warnings for uploaders)
+./evidence-upload -tls-cert /path/to/fullchain.pem -tls-key /path/to/privkey.pem
+```
+
+- With `-tls-selfsigned` the certificate is generated once and reused across
+  restarts (stable browser exception), covers `localhost`, `127.0.0.1`, the
+  machine hostname, and `-external-ip` if set, and its **SHA-256 fingerprint is
+  printed at startup** for out-of-band verification
+- Self-signed certificates trigger a one-time browser warning for uploaders —
+  they can proceed after confirming the fingerprint; use `-tls-cert`/`-tls-key`
+  with a real certificate (e.g. Let's Encrypt) to remove it
+- Generated links automatically use `https://` when TLS is enabled
+
 ## Tunnel Support (bore)
 
 For internet access without router configuration:
@@ -304,6 +331,10 @@ For internet access without router configuration:
 The bore tunnel creates a public URL via `bore.pub` that forwards to your local server.
 
 **Note:** bore.pub domains may be blocked by corporate proxies. Consider Cloudflare Tunnel for trusted domain access.
+
+**Security:** bore itself does not encrypt traffic — run the server with
+`-tls-selfsigned` (or `-tls-cert`/`-tls-key`) so uploads and credentials are
+encrypted end-to-end inside the tunnel.
 
 ## Tunnel Support (Cloudflare)
 

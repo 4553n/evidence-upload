@@ -1,4 +1,5 @@
 const puppeteer = require('puppeteer');
+const path = require('path');
 
 (async () => {
   const browser = await puppeteer.launch({
@@ -6,9 +7,10 @@ const puppeteer = require('puppeteer');
     args: ['--no-sandbox', '--disable-dev-shm-usage'],
   });
   const page = await browser.newPage();
-  await page.goto('file:///tmp/opencode/manual/build/manual.html', { waitUntil: 'networkidle0' });
+  const html = path.resolve(__dirname, '..', 'manual.html');
+  await page.goto('file://' + html, { waitUntil: 'networkidle0' });
   await page.pdf({
-    path: '/tmp/opencode/manual/build/Evidence-Upload-User-Manual-v2.2.3.pdf',
+    path: path.resolve(__dirname, '..', 'Evidence-Upload-User-Manual-v2.2.4.pdf'),
     format: 'A4',
     printBackground: true,
     margin: { top: '15mm', bottom: '16mm', left: '0', right: '0' },
@@ -17,7 +19,7 @@ const puppeteer = require('puppeteer');
     footerTemplate: `
       <div style="width:100%; font-size:7.5pt; color:#8a93a6; padding:0 16mm;
                   display:flex; justify-content:space-between; font-family:sans-serif;">
-        <span>Evidence Upload v2.2.3 — User Manual</span>
+        <span>Evidence Upload v2.2.4 — User Manual</span>
         <span>Page <span class="pageNumber"></span> of <span class="totalPages"></span></span>
       </div>`,
   });

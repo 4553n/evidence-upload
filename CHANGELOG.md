@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.2.4] - 2026-11-05
+
+### Added
+- **Native HTTPS/TLS support** - The server can now serve HTTPS directly, so evidence, credentials, and the admin token are encrypted end-to-end regardless of the transport below (bore tunnels are plaintext TCP by design)
+  - `-tls-cert` / `-tls-key` flags (`TLS_CERT`/`TLS_KEY` config keys) for real certificates
+  - `-tls-selfsigned` flag: zero-config auto-generated self-signed certificate, stored under `<storage>/.tls/` and reused across restarts (stable browser exception)
+  - Self-signed certificate covers `localhost`, `127.0.0.1`, `::1`, the machine hostname, and `-external-ip`; its SHA-256 fingerprint is printed at startup for out-of-band verification
+  - Generated links (upload links, triage links, auto-open URL) automatically use `https://` when TLS is enabled
+  - Startup fails fast when only one of `-tls-cert`/`-tls-key` is given
+
+### Changed
+- Documentation now recommends pairing bore tunnels with TLS instead of avoiding them
+
 ## [2.2.3] - 2026-11-04
 
 ### Fixed

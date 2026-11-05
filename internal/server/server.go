@@ -96,7 +96,12 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/triage/", s.handleTriageDownload)
 }
 
-func (s *Server) ListenAndServe(addr string) error {
+// ListenAndServe serves plain HTTP, or HTTPS when certFile/keyFile are set.
+func (s *Server) ListenAndServe(addr, certFile, keyFile string) error {
+	if certFile != "" && keyFile != "" {
+		log.Printf("Evidence Upload Server starting on %s (TLS)", addr)
+		return http.ListenAndServeTLS(addr, certFile, keyFile, s.withRecovery(s.mux))
+	}
 	log.Printf("Evidence Upload Server starting on %s", addr)
 	return http.ListenAndServe(addr, s.withRecovery(s.mux))
 }

@@ -6,7 +6,9 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"path/filepath"
 	"runtime"
+	"strings"
 	"syscall"
 	"time"
 
@@ -16,6 +18,7 @@ import (
 	"evidence-upload/internal/models"
 	"evidence-upload/internal/server"
 	"evidence-upload/internal/storage"
+	"evidence-upload/internal/tlsutil"
 	"evidence-upload/internal/tunnel"
 )
 
@@ -36,6 +39,26 @@ func main() {
 		if err != nil {
 			log.Fatalf("Failed to generate admin token: %v", err)
 		}
+	}
+
+	tlsCert, tlsKey := cfg.TLSCert, cfg.TLSKey
+	tlsFingerprint := ""
+	if (tlsCert == "") != (tlsKey == "") {
+		log.Fatal("Both -tls-cert and -tls-key are required to serve HTTPS")
+	}
+	if cfg.TLSSelfSigned && tlsCert == "" {
+		extra := []string{}
+		if h, err := os.Hostname(); err == nil {
+			extra = append(extra, h)
+		}
+		if cfg.ExternalIP != "" {
+			extra = append(extra, cfg.ExternalIP)
+		}
+		certPath, keyPath, fp, err := tlsutil.EnsureSelfSigned(filepath.Join(cfg.StoragePath, ".tls"), extra)
+		if err != nil {
+			log.Fatalf("Failed to prepare self-signed TLS certificate: %v", err)
+		}
+		tlsCert, tlsKey, tlsFingerprint = certPath, keyPath, fp
 	}
 
 	store, err := storage.New(cfg.StoragePath, cfg.BackupPath)
@@ -98,11 +121,27 @@ func main() {
 		fmt.Printf("Using external tunnel: %s\n", cfg.TunnelURL)
 	}
 
+	// With TLS enabled, generated links must use https (tunnel URLs arrive as http).
+	scheme := "http"
+	if tlsCert != "" {
+		scheme = "https"
+		if strings.HasPrefix(cfg.BaseURL, "http://") {
+			cfg.BaseURL = "https://" + strings.TrimPrefix(cfg.BaseURL, "http://")
+			srvConfig.BaseURL = cfg.BaseURL
+		}
+	}
+
 	addr := fmt.Sprintf(":%d", cfg.Port)
 	fmt.Printf("Evidence Upload Server v%s starting on %s\n", Version, addr)
 	fmt.Printf("Storage: %s\n", cfg.StoragePath)
 	fmt.Printf("Base URL: %s\n", cfg.BaseURL)
 	fmt.Printf("Admin token: %s  (keep private; set via -admin-token or ADMIN_TOKEN)\n", adminToken)
+	if tlsCert != "" {
+		fmt.Printf("TLS: HTTPS enabled (cert: %s)\n", tlsCert)
+		if tlsFingerprint != "" {
+			fmt.Printf("TLS fingerprint (SHA-256): %s\n", tlsFingerprint)
+		}
+	}
 	if cfg.BackupPath != "" {
 		fmt.Printf("Backup: %s\n", cfg.BackupPath)
 	}
@@ -143,7 +182,7 @@ func main() {
 			time.Sleep(1 * time.Second)
 			base := cfg.BaseURL
 			if base == "" {
-				base = fmt.Sprintf("http://localhost:%d", cfg.Port)
+				base = fmt.Sprintf("%s://localhost:%d", scheme, cfg.Port)
 			}
 			adminURL := base + "/admin?key=" + adminToken
 			fmt.Println("Opening admin interface...")
@@ -151,7 +190,7 @@ func main() {
 		}()
 	}
 
-	log.Fatal(srv.ListenAndServe(addr))
+	log.Fatal(srv.ListenAndServe(addr, tlsCert, tlsKey))
 }
 
 func openBrowser(url string) {

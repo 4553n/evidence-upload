@@ -35,6 +35,9 @@ type Config struct {
 	TunnelName       string
 	TunnelURL        string
 	AdminToken       string
+	TLSCert          string
+	TLSKey           string
+	TLSSelfSigned    bool
 	ShowVersion      bool
 	NoBrowser        bool
 }
@@ -64,6 +67,9 @@ func Load() *Config {
 	flag.StringVar(&cfg.TunnelName, "tunnel-name", getEnvOrConfig(configFile, "TUNNEL_NAME", ""), "Named tunnel for Cloudflare (creates if missing)")
 	flag.StringVar(&cfg.TunnelURL, "tunnel-url", getEnvOrConfig(configFile, "TUNNEL_URL", ""), "External tunnel URL (for multi-analyst mode)")
 	flag.StringVar(&cfg.AdminToken, "admin-token", getEnvOrConfig(configFile, "ADMIN_TOKEN", ""), "Admin panel token (auto-generated if empty)")
+	flag.StringVar(&cfg.TLSCert, "tls-cert", getEnvOrConfig(configFile, "TLS_CERT", ""), "TLS certificate file for HTTPS (enables HTTPS with -tls-key)")
+	flag.StringVar(&cfg.TLSKey, "tls-key", getEnvOrConfig(configFile, "TLS_KEY", ""), "TLS private key file for HTTPS")
+	flag.BoolVar(&cfg.TLSSelfSigned, "tls-selfsigned", false, "Serve HTTPS with an auto-generated self-signed certificate (stored under <storage>/.tls/)")
 	flag.BoolVar(&cfg.ShowVersion, "version", false, "Show version and exit")
 	flag.BoolVar(&cfg.NoBrowser, "no-browser", false, "Don't automatically open browser on startup")
 

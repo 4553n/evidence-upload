@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Evidence Upload — User Manual v2.2.3</title>
+<title>Evidence Upload — User Manual v2.2.4</title>
 <style>
   @page { size: A4; margin: 0; }
   :root {
@@ -204,8 +204,8 @@
   further steps are needed:
 </p>
 <pre><span class="c"># macOS (Apple Silicon)</span>
-curl -LO https://github.com/4553n/evidence-upload/releases/download/v2.2.3/evidence-upload-v2.2.3-macos-arm64.tar.gz
-tar -xzf evidence-upload-v2.2.3-macos-arm64.tar.gz
+curl -LO https://github.com/4553n/evidence-upload/releases/download/v2.2.4/evidence-upload-v2.2.4-macos-arm64.tar.gz
+tar -xzf evidence-upload-v2.2.4-macos-arm64.tar.gz
 
 <span class="c"># macOS (Intel) — use the -macos-amd64 archive</span>
 <span class="c"># Linux — use the -linux-amd64 archive</span>
@@ -222,8 +222,8 @@ tar -xzf evidence-upload-v2.2.3-macos-arm64.tar.gz
 
 <h3>2.2 First run</h3>
 <p>Start the server from a terminal. With no flags it listens on port <code>8443</code> and stores evidence in <code>./evidence</code>:</p>
-<pre>$ ./evidence-upload-v2.2.3-macos-arm64
-Evidence Upload Server v2.2.3 starting on :8443
+<pre>$ ./evidence-upload-v2.2.4-macos-arm64
+Evidence Upload Server v2.2.4 starting on :8443
 Storage: ./evidence
 Base URL:
 <span class="k">Admin token: 3f2a91c0e7b4d5a8c1e2f304b5d6a7c8</span>  <span class="c">(keep private; set via -admin-token or ADMIN_TOKEN)</span>
@@ -237,6 +237,13 @@ Opening admin interface...</pre>
   It is printed at every startup (or set your own with <code>-admin-token</code>).
   Anyone holding it has full administrative control of the server. Store it like
   a credential — in a password manager, not in a shared document.
+</div>
+
+<div class="callout info">
+  <strong>Handling evidence over a tunnel?</strong>
+  bore tunnels are plaintext TCP. Add <code>-tls-selfsigned</code> to the startup
+  command (or supply a real certificate with <code>-tls-cert</code>/<code>-tls-key</code>)
+  to encrypt everything end-to-end — see §12.
 </div>
 
 <!-- ============================== 3. QUICK START ============================== -->
@@ -402,6 +409,9 @@ Opening admin interface...</pre>
   <tr><td><code>-expire</code></td><td><code>24h</code></td><td>Default session expiration duration</td></tr>
   <tr><td><code>-secret</code></td><td>auto-generated</td><td>HMAC secret key</td></tr>
   <tr><td><code>-admin-token</code></td><td>auto-generated</td><td>Admin panel token (printed at startup)</td></tr>
+  <tr><td><code>-tls-cert</code></td><td><code>""</code></td><td>TLS certificate file for HTTPS (use with <code>-tls-key</code>)</td></tr>
+  <tr><td><code>-tls-key</code></td><td><code>""</code></td><td>TLS private key file for HTTPS</td></tr>
+  <tr><td><code>-tls-selfsigned</code></td><td><code>false</code></td><td>Serve HTTPS with an auto-generated self-signed certificate</td></tr>
   <tr><td><code>-max-size</code></td><td><code>10737418240</code></td><td>Maximum upload size in bytes (10 GB)</td></tr>
   <tr><td><code>-alert-email</code></td><td><code>""</code></td><td>Email address for security alerts</td></tr>
   <tr><td><code>-alert-webhook</code></td><td><code>""</code></td><td>Webhook URL for alerts (Slack/Discord/etc.)</td></tr>
@@ -454,8 +464,9 @@ CLOUDFLARE_DOMAIN=evidence.example.com</pre>
   </tr>
   <tr>
     <td><code>-tunnel bore</code></td><td>Plain TCP</td>
-    <td>Zero configuration, but traffic (including the admin token) travels
-    unencrypted. Use only on trusted networks.</td>
+    <td>Zero configuration, but bore does not encrypt traffic. Pair with
+    <code>-tls-selfsigned</code> (or <code>-tls-cert</code>/<code>-tls-key</code>) so
+    everything inside the tunnel is encrypted end-to-end.</td>
   </tr>
   <tr>
     <td><code>-tunnel external</code></td><td>Depends</td>
@@ -511,8 +522,10 @@ CLOUDFLARE_DOMAIN=evidence.example.com</pre>
 <div class="callout">
   <strong>Known limitations</strong>
   Upload and triage download links are bearer URLs — anyone holding the link has
-  that capability. The service itself serves plain HTTP by default; use a
-  TLS-terminating tunnel (Cloudflare) or a reverse proxy for transport security.
+  that capability. The service serves plain HTTP by default; enable TLS with
+  <code>-tls-selfsigned</code> (zero-config) or <code>-tls-cert</code>/<code>-tls-key</code>
+  (real certificates) so all traffic — including through plaintext tunnels like
+  bore — is encrypted end-to-end between the browser and your server.
 </div>
 
 <!-- ============================== 14. TROUBLESHOOTING ============================== -->
@@ -557,8 +570,15 @@ CLOUDFLARE_DOMAIN=evidence.example.com</pre>
     truncated safely since v2.2.2; regenerate by revoking again or from expiry.</td>
   </tr>
   <tr>
+    <td>Browser warns about the TLS certificate</td>
+    <td>Expected with <code>-tls-selfsigned</code>: the certificate is not issued by
+    a public authority. Verify the SHA-256 fingerprint printed at startup, then
+    proceed; use <code>-tls-cert</code>/<code>-tls-key</code> with a real
+    certificate to remove the warning entirely.</td>
+  </tr>
+  <tr>
     <td>Garbled characters in old CoC PDFs</td>
-    <td>Fixed in v2.2.3 (embedded Unicode fonts). Documents generated by older
+    <td>Fixed in v2.2.4 (embedded Unicode fonts). Documents generated by older
     versions remain valid; their text layer used Latin-1 fonts.</td>
   </tr>
 </table>
@@ -576,7 +596,7 @@ $ sha256sum -c SHA256SUMS            <span class="c"># Linux</span></pre>
   <li><strong>DejaVu fonts</strong> (embedded in the CoC generator) — Bitstream Vera / DejaVu license; the full text ships in <code>internal/custody/fonts/LICENSE-DejaVu.txt</code></li>
 </ul>
 <p class="small" style="margin-top:22px">
-  Evidence Upload v2.2.3 — User Manual · Generated 2026-11-05 ·
+  Evidence Upload v2.2.4 — User Manual · Generated 2026-11-05 ·
   Interfaces shown are from the v2.2.x series.
 </p>
 
