@@ -16,6 +16,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"evidence-upload/internal/alerts"
@@ -30,6 +31,7 @@ type Server struct {
 	storage  *storage.Storage
 	alerts   *alerts.Manager
 	mux      *http.ServeMux
+	shortLim *shortLimiter
 }
 
 type Config struct {
@@ -49,6 +51,7 @@ func NewServer(cfg *Config, sessions *models.SessionManager, storage *storage.St
 		storage:  storage,
 		alerts:   alertMgr,
 		mux:      http.NewServeMux(),
+		shortLim: newShortLimiter(shortFailLimit, shortFailWindow),
 	}
 
 	s.routes()
@@ -97,6 +100,8 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/admin/api/create", s.requireAdmin(s.handleAdminCreate))
 	s.mux.HandleFunc("/admin/api/triage-package", s.requireAdmin(s.handleAdminTriagePackage))
 	s.mux.HandleFunc("/triage/", s.handleTriageDownload)
+	s.mux.HandleFunc("/e/", s.handleShortUpload)
+	s.mux.HandleFunc("/t/", s.handleShortTriage)
 }
 
 // ListenAndServe serves plain HTTP, or HTTPS when certFile/keyFile are set.
@@ -152,6 +157,130 @@ func writeJSONError(w http.ResponseWriter, status int, msg string) {
 	})
 }
 
+// Short codes are ~40-bit bearer credentials; brute-force attempts are capped
+// per client IP with a sliding window and reported through the alert channel.
+const (
+	shortFailLimit  = 5
+	shortFailWindow = 5 * time.Minute
+)
+
+type shortLimiter struct {
+	mu       sync.Mutex
+	failures map[string][]time.Time
+	limit    int
+	window   time.Duration
+}
+
+func newShortLimiter(limit int, window time.Duration) *shortLimiter {
+	return &shortLimiter{failures: make(map[string][]time.Time), limit: limit, window: window}
+}
+
+// blocked reports whether ip has exhausted its allowance within the window.
+func (l *shortLimiter) blocked(ip string) bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	now := time.Now()
+	kept := l.failures[ip][:0]
+	for _, t := range l.failures[ip] {
+		if now.Sub(t) < l.window {
+			kept = append(kept, t)
+		}
+	}
+	l.failures[ip] = kept
+	return len(kept) >= l.limit
+}
+
+// fail records a failed attempt for ip.
+func (l *shortLimiter) fail(ip string) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.failures[ip] = append(l.failures[ip], time.Now())
+}
+
+// resolveShortCode maps a short code to its session token, enforcing the
+// per-IP rate limit and alerting on failed attempts. On failure a generic
+// message is returned: the response never reveals whether a code exists.
+func (s *Server) resolveShortCode(w http.ResponseWriter, r *http.Request, code string) (string, bool) {
+	clientIP := getClientIP(r)
+	if s.shortLim.blocked(clientIP) {
+		http.Error(w, "Too many attempts - wait a few minutes and double-check the code", http.StatusTooManyRequests)
+		return "", false
+	}
+	token, ok := s.sessions.TokenByShortCode(code)
+	if !ok {
+		s.shortLim.fail(clientIP)
+		s.alerts.SendAlert(
+			alerts.AlertUnauthorizedAccess,
+			code,
+			clientIP,
+			r.UserAgent(),
+			"Invalid short link access attempt",
+			map[string]interface{}{"code": code, "path": r.URL.Path},
+		)
+		http.Error(w, "This link is invalid or expired", http.StatusNotFound)
+		return "", false
+	}
+	return token, true
+}
+
+// handleShortUpload serves the upload page for /e/<code> links.
+func (s *Server) handleShortUpload(w http.ResponseWriter, r *http.Request) {
+	code := models.NormalizeShortCode(strings.TrimPrefix(r.URL.Path, "/e/"))
+	token, ok := s.resolveShortCode(w, r, code)
+	if !ok {
+		return
+	}
+	session, ok := s.sessions.GetSession(token)
+	if !ok {
+		s.rejectSession(w, token, http.StatusUnauthorized)
+		return
+	}
+	s.deliverUploadPage(w, r, session)
+}
+
+// handleShortTriage serves the triage package for /t/<code> links.
+func (s *Server) handleShortTriage(w http.ResponseWriter, r *http.Request) {
+	code := models.NormalizeShortCode(strings.TrimPrefix(r.URL.Path, "/t/"))
+	token, ok := s.resolveShortCode(w, r, code)
+	if !ok {
+		return
+	}
+	s.serveTriage(w, r, token)
+}
+
+// deliverUploadPage applies IP binding and serves the uploader page. Used by
+// both the long links (/) and the short links (/e/).
+func (s *Server) deliverUploadPage(w http.ResponseWriter, r *http.Request, session *models.Session) {
+	token := session.Token
+	clientIP := getClientIP(r)
+	if session.IsLocked && session.UploaderIP != clientIP {
+		s.alerts.SendAlert(
+			alerts.AlertUnauthorizedAccess,
+			token,
+			clientIP,
+			r.UserAgent(),
+			fmt.Sprintf("IP mismatch: expected %s, got %s", session.UploaderIP, clientIP),
+			map[string]interface{}{
+				"expected_ip": session.UploaderIP,
+				"actual_ip":   clientIP,
+			},
+		)
+		http.Error(w, "Unauthorized access detected", http.StatusForbidden)
+		return
+	}
+
+	if !session.IsLocked {
+		s.sessions.LockSession(token, clientIP)
+		s.sessions.AddActivity(token, "page_access", clientIP, r.UserAgent(), "Upload page accessed")
+	}
+
+	w.Header().Set("Content-Type", "text/html")
+	html := strings.Replace(uploadHTML, "{{TOKEN}}", session.Token, 1)
+	html = strings.Replace(html, "{{SECRET}}", session.Secret, 1)
+	html = strings.Replace(html, "{{DESCRIPTION}}", session.Description, 1)
+	fmt.Fprint(w, html)
+}
+
 func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path != "/" {
 		http.NotFound(w, r)
@@ -185,33 +314,7 @@ func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	clientIP := getClientIP(r)
-	if session.IsLocked && session.UploaderIP != clientIP {
-		s.alerts.SendAlert(
-			alerts.AlertUnauthorizedAccess,
-			token,
-			clientIP,
-			r.UserAgent(),
-			fmt.Sprintf("IP mismatch: expected %s, got %s", session.UploaderIP, clientIP),
-			map[string]interface{}{
-				"expected_ip": session.UploaderIP,
-				"actual_ip":   clientIP,
-			},
-		)
-		http.Error(w, "Unauthorized access detected", http.StatusForbidden)
-		return
-	}
-
-	if !session.IsLocked {
-		s.sessions.LockSession(token, clientIP)
-		s.sessions.AddActivity(token, "page_access", clientIP, r.UserAgent(), "Upload page accessed")
-	}
-
-	w.Header().Set("Content-Type", "text/html")
-	html := strings.Replace(uploadHTML, "{{TOKEN}}", token, 1)
-	html = strings.Replace(html, "{{SECRET}}", secret, 1)
-	html = strings.Replace(html, "{{DESCRIPTION}}", session.Description, 1)
-	fmt.Fprint(w, html)
+	s.deliverUploadPage(w, r, session)
 }
 
 func (s *Server) handleUploadFile(w http.ResponseWriter, r *http.Request) {
@@ -893,7 +996,12 @@ func (s *Server) handleTriageDownload(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "Token required", http.StatusBadRequest)
 		return
 	}
+	s.serveTriage(w, r, token)
+}
 
+// serveTriage delivers the session's triage package. Used by both /triage/
+// (long link) and /t/ (short link).
+func (s *Server) serveTriage(w http.ResponseWriter, r *http.Request, token string) {
 	session, ok := s.sessions.GetSession(token)
 	if !ok {
 		s.rejectSession(w, token, http.StatusNotFound)
@@ -1384,6 +1492,9 @@ var adminHTML = `<!DOCTYPE html>
         .activity-action { color: #e94560; font-weight: bold; }
         .activity-details { color: #ccc; margin-top: 4px; }
         .link-box { background: #0f3460; padding: 10px; border-radius: 4px; word-break: break-all; margin-top: 10px; font-family: monospace; font-size: 12px; }
+        .short-link { font-family: "DejaVu Sans Mono", monospace; font-size: 1.15em; font-weight: bold; color: #7fd4ff; background: #0f3460; padding: 14px; border-radius: 6px; word-break: break-all; margin: 12px 0 8px; }
+        .code-row { color: #888; margin: 8px 0; display: flex; align-items: center; gap: 10px; }
+        .code-row code { color: #eee; font-size: 1.15em; letter-spacing: 3px; }
         .token-link { color: #2196F3; cursor: pointer; text-decoration: underline; }
         .token-link:hover { color: #64B5F6; }
         .refresh-info { float: right; font-size: 0.6em; color: #888; font-weight: normal; }
@@ -1438,10 +1549,18 @@ var adminHTML = `<!DOCTYPE html>
     <div class="modal" id="linkModal">
         <div class="modal-content">
             <h2>Upload Link Generated</h2>
-            <p>Share this link with the uploader:</p>
-            <div class="link-box" id="generatedLink"></div>
-            <button class="btn btn-primary" onclick="copyLink()" style="margin-top: 15px;">Copy to Clipboard</button>
+            <p>Share this short link with the uploader — it can also be typed by hand:</p>
+            <div class="short-link" id="generatedShortLink"></div>
+            <div class="code-row">Short code: <code id="generatedShortCode"></code>
+                <button class="btn btn-info btn-small" onclick="copyText(document.getElementById('generatedShortCode').textContent)">Copy Code</button>
+            </div>
+            <button class="btn btn-primary" onclick="copyLink()" style="margin-top: 15px;">Copy Short Link</button>
             <button class="btn" onclick="closeLinkModal()" style="margin-left: 10px;">Close</button>
+            <details style="margin-top: 15px;">
+                <summary style="cursor: pointer; color: #888;">Full link (also works)</summary>
+                <div class="link-box" id="generatedLink"></div>
+                <button class="btn" onclick="copyFullLink()" style="margin-top: 10px;">Copy Full Link</button>
+            </details>
         </div>
     </div>
 
@@ -1469,10 +1588,15 @@ var adminHTML = `<!DOCTYPE html>
     <div class="modal" id="triageLinkModal">
         <div class="modal-content">
             <h2>Triage Package Link</h2>
-            <p>Share this link with the remote party to download the triage package:</p>
-            <div class="link-box" id="triageLink"></div>
-            <button class="btn btn-primary" onclick="copyTriageLink()" style="margin-top: 15px;">Copy to Clipboard</button>
+            <p>Share this short link with the remote party to download the triage package:</p>
+            <div class="short-link" id="triageShortLink"></div>
+            <div class="code-row">Short code: <code id="triageShortCode"></code></div>
+            <button class="btn btn-primary" onclick="copyTriageLink()" style="margin-top: 15px;">Copy Short Link</button>
             <button class="btn" onclick="closeTriageLinkModal()" style="margin-left: 10px;">Close</button>
+            <details style="margin-top: 15px;">
+                <summary style="cursor: pointer; color: #888;">Full link (also works)</summary>
+                <div class="link-box" id="triageLink"></div>
+            </details>
         </div>
     </div>
 
@@ -1609,11 +1733,15 @@ var adminHTML = `<!DOCTYPE html>
             try {
                 var session = await apiFetch('/admin/api/session?token=' + encodeURIComponent(token));
                 if (currentDetailToken !== token) return;
+                if (session.short_code) shortCodeByToken[session.token] = session.short_code;
                 var modalContent = document.querySelector('#detailModal .modal-content');
                 var keepScroll = modalContent.scrollTop;
                 var html = '';
                 html += '<div class="detail-row"><span class="detail-label">Token:</span><span class="detail-value">' + escapeHtml(session.token) + '</span></div>';
                 html += '<div class="detail-row"><span class="detail-label">Secret:</span><span class="detail-value">' + escapeHtml(session.secret) + '</span></div>';
+                if (session.short_code) {
+                    html += '<div class="detail-row"><span class="detail-label">Short Link:</span><span class="detail-value">' + escapeHtml(baseUrl + '/e/' + session.short_code) + ' (' + escapeHtml(formatCode(session.short_code)) + ')</span></div>';
+                }
                 html += '<div class="detail-row"><span class="detail-label">Description:</span><span class="detail-value">' + escapeHtml(session.description || '-') + '</span></div>';
                 html += '<div class="detail-row"><span class="detail-label">Created:</span><span class="detail-value">' + new Date(session.created_at).toLocaleString() + '</span></div>';
                 html += '<div class="detail-row"><span class="detail-label">Expires:</span><span class="detail-value">' + new Date(session.expires_at).toLocaleString() + '</span></div>';
@@ -1669,6 +1797,12 @@ var adminHTML = `<!DOCTYPE html>
             currentDetailToken = null;
         }
 
+        var shortCodeByToken = {};
+
+        function formatCode(code) {
+            return code && code.length === 8 ? code.substring(0, 4) + '-' + code.substring(4) : (code || '');
+        }
+
         async function createSession() {
             var duration = parseInt(document.getElementById('duration').value) || 24;
             var description = document.getElementById('description').value;
@@ -1677,7 +1811,11 @@ var adminHTML = `<!DOCTYPE html>
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({duration: duration * 3600000000000, description: description})
             });
+            if (session.short_code) shortCodeByToken[session.token] = session.short_code;
+            var shortLink = baseUrl + '/e/' + (session.short_code || '');
             var link = baseUrl + '/?token=' + session.token + '&secret=' + session.secret;
+            document.getElementById('generatedShortLink').textContent = shortLink;
+            document.getElementById('generatedShortCode').textContent = formatCode(session.short_code);
             document.getElementById('generatedLink').textContent = link;
             closeModal();
             document.getElementById('linkModal').classList.add('active');
@@ -1739,8 +1877,13 @@ var adminHTML = `<!DOCTYPE html>
         }
 
         function copyLink() {
+            copyText(document.getElementById('generatedShortLink').textContent);
+            alert('Short link copied to clipboard!');
+        }
+
+        function copyFullLink() {
             copyText(document.getElementById('generatedLink').textContent);
-            alert('Link copied to clipboard!');
+            alert('Full link copied to clipboard!');
         }
 
         var pendingTriageToken = null;
@@ -1764,9 +1907,7 @@ var adminHTML = `<!DOCTYPE html>
                     body: formData
                 });
                 if (result.success) {
-                    var triageLink = baseUrl + '/triage/' + pendingTriageToken;
-                    document.getElementById('triageLink').textContent = triageLink;
-                    document.getElementById('triageLinkModal').classList.add('active');
+                    showTriageLink(pendingTriageToken);
                     showSessionDetail(pendingTriageToken);
                 } else {
                     alert('Failed to upload triage package');
@@ -1780,8 +1921,10 @@ var adminHTML = `<!DOCTYPE html>
         });
 
         function showTriageLink(token) {
-            var triageLink = baseUrl + '/triage/' + token;
-            document.getElementById('triageLink').textContent = triageLink;
+            var code = shortCodeByToken[token] || '';
+            document.getElementById('triageShortLink').textContent = baseUrl + '/t/' + code;
+            document.getElementById('triageShortCode').textContent = formatCode(code);
+            document.getElementById('triageLink').textContent = baseUrl + '/triage/' + token;
             document.getElementById('triageLinkModal').classList.add('active');
         }
 
@@ -1790,7 +1933,7 @@ var adminHTML = `<!DOCTYPE html>
         }
 
         function copyTriageLink() {
-            copyText(document.getElementById('triageLink').textContent);
+            copyText(document.getElementById('triageShortLink').textContent);
             alert('Triage link copied to clipboard!');
         }
 

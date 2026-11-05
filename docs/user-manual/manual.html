@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Evidence Upload — User Manual v2.2.7</title>
+<title>Evidence Upload — User Manual v2.2.8</title>
 <style>
   @page { size: A4; margin: 0; }
   :root {
@@ -146,7 +146,7 @@
   <h1>Evidence Upload</h1>
   <div class="sub">User Manual</div>
   <div class="meta">
-    <strong>Version 2.2.7</strong><br>
+    <strong>Version 2.2.8</strong><br>
     November 2026<br><br>
     Secure forensic evidence collection, upload sessions,<br>
     and Chain of Custody documentation
@@ -207,8 +207,8 @@
   further steps are needed:
 </p>
 <pre><span class="c"># macOS (Apple Silicon)</span>
-curl -LO https://github.com/4553n/evidence-upload/releases/download/v2.2.7/evidence-upload-v2.2.7-macos-arm64.tar.gz
-tar -xzf evidence-upload-v2.2.7-macos-arm64.tar.gz
+curl -LO https://github.com/4553n/evidence-upload/releases/download/v2.2.8/evidence-upload-v2.2.8-macos-arm64.tar.gz
+tar -xzf evidence-upload-v2.2.8-macos-arm64.tar.gz
 
 <span class="c"># macOS (Intel) — use the -macos-amd64 archive</span>
 <span class="c"># Linux — use the -linux-amd64 archive</span>
@@ -231,10 +231,10 @@ tar -xzf evidence-upload-v2.2.7-macos-arm64.tar.gz
   certificate. The tunnel client is built into the application — nothing is
   downloaded or installed:
 </p>
-<pre>$ ./evidence-upload-v2.2.7-macos-arm64
+<pre>$ ./evidence-upload-v2.2.8-macos-arm64
 Detected external IP: 203.0.113.44
 Tunnel established: bore.pub:41739 -&gt; localhost:8443
-Evidence Upload Server v2.2.7 starting on :8443
+Evidence Upload Server v2.2.8 starting on :8443
 Storage: ./evidence
 Base URL: https://bore.pub:41739
 <span class="k">Admin token: 3f2a91c0e7b4d5a8c1e2f304b5d6a7c8</span>  <span class="c">(keep private; set via -admin-token or ADMIN_TOKEN)</span>
@@ -307,13 +307,27 @@ Opening admin interface...</pre>
   <img src="img/admin-create.png" alt="Create session dialog">
   <figcaption>Figure 2 — The create-session dialog.</figcaption>
 </figure>
-<p>When the session is created, the panel shows the upload link to share:</p>
-<pre>https://your-host:8443/?token=<span class="s">f95f5997d290…</span>&amp;secret=<span class="s">8b51b8bbfb0e…</span></pre>
+<p>
+  When the session is created, the panel shows a short link and the bare code:
+</p>
+<figure>
+  <img src="img/admin-link.png" alt="Generated link dialog with short link and code">
+  <figcaption>Figure 3 — The generated link dialog. The short link and code are the primary way to share access; the full link is kept underneath.</figcaption>
+</figure>
+<pre>https://bore.pub:41739/e/<span class="s">K7M3-Q9P2</span></pre>
+<p>
+  The short link is designed to be <strong>typed by hand</strong> when clicking is
+  not an option — read the code aloud, dictate it over the phone, or write it on
+  a note. Codes accept lowercase and the dash is optional (<code>k7m3q9p2</code>
+  works too). The full <code>?token=…&amp;secret=…</code> link keeps working as an
+  alias, so nothing shared earlier breaks.
+</p>
 <div class="callout">
   <strong>Treat the link as a bearer credential.</strong>
-  The <code>token</code> identifies the session; the <code>secret</code> authorizes
-  uploads to it. Anyone with the full link can upload evidence into the case.
-  Send it to the intended party only, over a trusted channel.
+  Whoever holds the short link (or the full link) can upload evidence into the
+  case. Short codes are rate-limited — 5 failed attempts per IP within 5 minutes
+  lock the endpoint and raise a security alert — but they are shorter than the
+  full link, so send them only to the intended party, over a trusted channel.
 </div>
 
 <!-- ============================== 6. MONITORING ============================== -->
@@ -324,7 +338,7 @@ Opening admin interface...</pre>
 </p>
 <figure>
   <img src="img/admin-detail.png" alt="Session detail dialog">
-  <figcaption>Figure 3 — Session detail: credentials, status, per-file SHA-256 hashes with copy buttons, and the activity history.</figcaption>
+  <figcaption>Figure 4 — Session detail: credentials, short link, per-file SHA-256 hashes with copy buttons, and the activity history.</figcaption>
 </figure>
 <h3>What you see</h3>
 <ul>
@@ -345,7 +359,7 @@ Opening admin interface...</pre>
 </p>
 <figure>
   <img src="img/upload-page.png" alt="Uploader page">
-  <figcaption>Figure 4 — The uploader's page: IP information step, drag-and-drop area, and the list of already-uploaded files with hashes.</figcaption>
+  <figcaption>Figure 5 — The uploader's page: IP information step, drag-and-drop area, and the list of already-uploaded files with hashes.</figcaption>
 </figure>
 <h3>The uploader's steps</h3>
 <ol>
@@ -375,11 +389,11 @@ Opening admin interface...</pre>
   view, use <strong>Send Triage Package</strong> to upload one, or
   <strong>Replace</strong> to swap it later.
 </p>
-<p>Each package gets a public download link:</p>
-<pre>https://your-host:8443/triage/<span class="s">f95f5997d290…</span></pre>
+<p>Each package gets a short download link (the session's code works here too):</p>
+<pre>https://bore.pub:41739/t/<span class="s">K7M3-Q9P2</span></pre>
 <div class="callout">
-  <strong>The triage link is unauthenticated by design</strong> — the session
-  token in the URL is the only protection. Share it only with the intended
+  <strong>The triage link is unauthenticated by design</strong> — the code (or
+  token) in the URL is the only protection. Share it only with the intended
   recipient, and revoke the session when the transfer is complete.
 </div>
 
@@ -392,7 +406,7 @@ Opening admin interface...</pre>
 </p>
 <figure>
   <img src="img/admin-revoke.png" alt="Revoke session dialog">
-  <figcaption>Figure 5 — The revoke dialog. Revoking closes the session for further uploads and generates the documentation.</figcaption>
+  <figcaption>Figure 6 — The revoke dialog. Revoking closes the session for further uploads and generates the documentation.</figcaption>
 </figure>
 <p>
   Revoking writes <code>CHAIN_OF_CUSTODY.pdf</code> (plus a
@@ -404,7 +418,7 @@ Opening admin interface...</pre>
 </p>
 <figure>
   <img src="img/coc-page-1.png" alt="Chain of Custody PDF, page 1">
-  <figcaption>Figure 6 — The generated Chain of Custody document: case information, collector IP details, and the evidence table with SHA-256 hashes.</figcaption>
+  <figcaption>Figure 7 — The generated Chain of Custody document: case information, collector IP details, and the evidence table with SHA-256 hashes.</figcaption>
 </figure>
 <h3>The document contains</h3>
 <ul>
@@ -582,10 +596,23 @@ CLOUDFLARE_DOMAIN=evidence.example.com</pre>
     panel and enter the token printed at server startup.</td>
   </tr>
   <tr>
+    <td>Short link says "This link is invalid or expired"</td>
+    <td>The code does not match any session — check for typos (the letters
+    <code>I</code>, <code>L</code>, <code>O</code>, <code>U</code> are never used).
+    Codes are accepted in lowercase and without the dash. If it previously
+    worked, the session may have been revoked or expired.</td>
+  </tr>
+  <tr>
+    <td>Short link returns "Too many attempts" (HTTP 429)</td>
+    <td>Five failed lookups from one address within 5 minutes trigger a
+    temporary lockout; wait a few minutes and double-check the code. Repeated
+    lockouts raise security alerts on the analyst's side.</td>
+  </tr>
+  <tr>
     <td>Upload link reports a session problem</td>
     <td>The message names the exact reason: <em>closed by the analyst</em>
     (revoked), <em>expired</em>, or <em>not found</em> (malformed link, or a link
-    from a server older than v2.2.7 that lost sessions on restart). Ask the
+    from a server older than v2.2.8 that lost sessions on restart). Ask the
     analyst for a fresh link if in doubt.</td>
   </tr>
   <tr>
@@ -631,7 +658,7 @@ $ sha256sum -c SHA256SUMS            <span class="c"># Linux</span></pre>
   <li><strong>DejaVu fonts</strong> (embedded in the CoC generator) — Bitstream Vera / DejaVu license; the full text ships in <code>internal/custody/fonts/LICENSE-DejaVu.txt</code></li>
 </ul>
 <p class="small" style="margin-top:22px">
-  Evidence Upload v2.2.7 — User Manual · Generated 2026-11-05 ·
+  Evidence Upload v2.2.8 — User Manual · Generated 2026-11-05 ·
   Interfaces shown are from the v2.2.x series.
 </p>
 

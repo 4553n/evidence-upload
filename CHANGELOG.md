@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.2.8] - 2026-11-05
+
+### Added
+- **Short, hand-typable links** - Every session gets an 8-character code (Crockford base32, unambiguous alphabet) that replaces the 128-hex-character query strings for humans
+  - `https://host:port/e/K7M3-Q9P2` opens the upload page; `https://host:8443/t/K7M3-Q9P2` downloads the triage package
+  - Codes are accepted case-insensitively and with or without the dash (`k7m3-q9p2` works)
+  - Full `?token=…&secret=…` links keep working as aliases; uploads still authenticate with the full token+secret server-side
+  - Codes persist across restarts (`.sessions.json`); sessions created before v2.2.8 get one on load; revoked codes are never reused
+- **Brute-force protection for short codes** - Sliding per-IP limit of 5 failed attempts per 5 minutes (HTTP 429 with a clear message); every failed attempt raises a security alert (desktop/email/webhook/log); code resolution is constant-time and failures return a generic message
+
+### Changed
+- Admin link dialogs now feature the short link and code with copy buttons (full link kept as a secondary detail); the session detail view shows the short link
+
 ## [2.2.7] - 2026-11-05
 
 ### Fixed

@@ -6,7 +6,7 @@ A secure forensic evidence data upload web application with session-based authen
 
 An illustrated user manual — installation, admin panel, uploader flow, Chain of
 Custody, tunnels, HTTPS, and troubleshooting — is available at
-[`docs/user-manual/Evidence-Upload-User-Manual-v2.2.7.pdf`](docs/user-manual/Evidence-Upload-User-Manual-v2.2.7.pdf)
+[`docs/user-manual/Evidence-Upload-User-Manual-v2.2.8.pdf`](docs/user-manual/Evidence-Upload-User-Manual-v2.2.8.pdf)
 (HTML source and screenshots in the same directory).
 
 ## Features
@@ -18,6 +18,7 @@ Custody, tunnels, HTTPS, and troubleshooting — is available at
 - **Activity Tracking**: Full audit trail of all session activities
 - **Chain of Custody PDF**: Automatic forensic documentation on session revocation/expiration
 - **Triage Collection Package**: Upload and share triage packages with remote parties
+- **Short links**: Hand-typable upload and triage links (`/e/K7M3-Q9P2`) with rate limiting and alerts
 - **IP Detection**: Records both the server's and the uploader's IPs for forensic documentation
 - **Auto-open Browser**: Admin interface opens automatically on startup
 - **Config File Support**: Persistent configuration via `~/.evidence-upload.conf`
@@ -178,7 +179,15 @@ Open browser to `http://<server-ip>:8443/admin`
 
 ### 4. Share Upload Link
 
-Copy the generated link and send it to the uploading party.
+Copy the generated short link and send it to the uploading party. It is short
+enough to read aloud or type by hand:
+
+```
+https://<host>:<port>/e/K7M3-Q9P2
+```
+
+The bare code (`K7M3-Q9P2`) works too — it is accepted case-insensitively, with
+or without the dash. The full `?token=…&secret=…` link still works as well.
 
 ### 5. Uploader Access
 
@@ -197,7 +206,7 @@ If you have a triage collection package to share:
 - In the admin panel, click on the session token
 - Click "Send Triage Package" in the session detail modal
 - Select the triage package file
-- A download link is generated: `http://host:8443/triage/<token>`
+- A download link is generated: `http://host:8443/t/<code>` (short) or `http://host:8443/triage/<token>` (full)
 - Share this link with the remote party
 
 ### 7. Monitor Activity
@@ -235,13 +244,20 @@ The triage package feature allows analysts to share a collection tool with remot
 - **Replaceable**: Analyst can replace the package with a new version
 - **Auto-named**: Files are stored as `TRIAGE_PACKAGE_<original_filename>`
 
-### Download Link Format
+### Link Formats
 
 ```
-http://<host>:<port>/triage/<session-token>
+https://<host>:<port>/e/<short-code>          # upload page (short, hand-typeable)
+https://<host>:<port>/t/<short-code>          # triage package download (short)
+https://<host>:<port>/?token=…&secret=…       # upload page (full, still works)
+https://<host>:<port>/triage/<session-token>  # triage download (full, still works)
 ```
 
-The link is public and does not require the session secret.
+Short codes are 8 characters of unambiguous Crockford base32 (`K7M3-Q9P2`),
+accepted case-insensitively with or without the dash. They are rate-limited
+(5 failed attempts per IP per 5 minutes, with alerts on failures) since they are
+shorter than the full token/secret pair. The full links are public bearer links
+and do not require the session secret beyond what the URL carries.
 
 ## Security Features
 

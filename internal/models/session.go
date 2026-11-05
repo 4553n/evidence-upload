@@ -3,6 +3,7 @@ package models
 import (
 	"crypto/hmac"
 	"crypto/rand"
+	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -25,6 +26,7 @@ type ActivityEvent struct {
 type Session struct {
 	Token          string           `json:"token"`
 	Secret         string           `json:"secret"`
+	ShortCode      string           `json:"short_code,omitempty"`
 	CreatedAt      time.Time        `json:"created_at"`
 	ExpiresAt      time.Time        `json:"expires_at"`
 	Description    string           `json:"description"`
@@ -60,23 +62,26 @@ func (s *Session) Clone() *Session {
 }
 
 type SessionManager struct {
-	sessions map[string]*Session
-	revoked  map[string]time.Time
-	mu       sync.RWMutex
-	secret   []byte
-	persist  string // path of the state file; empty disables persistence
+	sessions     map[string]*Session
+	revoked      map[string]time.Time
+	revokedCodes map[string]string // short code -> token, kept after revocation
+	mu           sync.RWMutex
+	secret       []byte
+	persist      string // path of the state file; empty disables persistence
 }
 
 type managerState struct {
-	Sessions map[string]*Session     `json:"sessions"`
-	Revoked  map[string]time.Time    `json:"revoked"`
+	Sessions     map[string]*Session  `json:"sessions"`
+	Revoked      map[string]time.Time `json:"revoked"`
+	RevokedCodes map[string]string    `json:"revoked_codes"`
 }
 
 func NewSessionManager(secret string) *SessionManager {
 	return &SessionManager{
-		sessions: make(map[string]*Session),
-		revoked:  make(map[string]time.Time),
-		secret:   []byte(secret),
+		sessions:     make(map[string]*Session),
+		revoked:      make(map[string]time.Time),
+		revokedCodes: make(map[string]string),
+		secret:       []byte(secret),
 	}
 }
 
@@ -108,19 +113,85 @@ func (sm *SessionManager) Load() (int, error) {
 	}
 	restored := 0
 	now := time.Now()
-	for token, s := range st.Sessions {
-		if s == nil || now.After(s.ExpiresAt) {
-			continue
-		}
-		sm.sessions[token] = s
-		restored++
-	}
 	if st.Revoked != nil {
 		for t, at := range st.Revoked {
 			sm.revoked[t] = at
 		}
 	}
+	if st.RevokedCodes != nil {
+		for c, t := range st.RevokedCodes {
+			sm.revokedCodes[c] = t
+		}
+	}
+	for token, s := range st.Sessions {
+		if s == nil || now.After(s.ExpiresAt) {
+			continue
+		}
+		// Sessions created before short codes existed get one on load.
+		if s.ShortCode == "" {
+			code, err := sm.newUniqueCodeLocked()
+			if err != nil {
+				return restored, err
+			}
+			s.ShortCode = code
+		}
+		sm.sessions[token] = s
+		restored++
+	}
+	sm.saveLocked()
 	return restored, nil
+}
+
+// newUniqueCodeLocked generates a code not used by any active or revoked
+// session. Callers must hold sm.mu.
+func (sm *SessionManager) newUniqueCodeLocked() (string, error) {
+	for attempts := 0; attempts < 100; attempts++ {
+		code, err := generateShortCode()
+		if err != nil {
+			return "", err
+		}
+		taken := false
+		for _, s := range sm.sessions {
+			if s.ShortCode == code {
+				taken = true
+				break
+			}
+		}
+		if _, ok := sm.revokedCodes[code]; ok {
+			taken = true
+		}
+		if !taken {
+			return code, nil
+		}
+	}
+	return "", fmt.Errorf("could not allocate a unique short code")
+}
+
+// TokenByShortCode resolves a (possibly dashed/lowercase) short code to its
+// session token. Comparison is constant-time over the code table so the
+// response timing does not reveal which codes exist.
+func (sm *SessionManager) TokenByShortCode(code string) (string, bool) {
+	code = NormalizeShortCode(code)
+	if code == "" {
+		return "", false
+	}
+	sm.mu.RLock()
+	defer sm.mu.RUnlock()
+
+	found := false
+	token := ""
+	target := []byte(code)
+	for t, s := range sm.sessions {
+		if subtle.ConstantTimeCompare([]byte(s.ShortCode), target) == 1 && !found {
+			found, token = true, t
+		}
+	}
+	for c, t := range sm.revokedCodes {
+		if subtle.ConstantTimeCompare([]byte(c), target) == 1 && !found {
+			found, token = true, t
+		}
+	}
+	return token, found
 }
 
 // saveLocked persists the current state. Callers must hold sm.mu.
@@ -129,7 +200,7 @@ func (sm *SessionManager) saveLocked() {
 	if sm.persist == "" {
 		return
 	}
-	st := managerState{Sessions: sm.sessions, Revoked: sm.revoked}
+	st := managerState{Sessions: sm.sessions, Revoked: sm.revoked, RevokedCodes: sm.revokedCodes}
 	data, err := json.MarshalIndent(st, "", " ")
 	if err != nil {
 		log.Printf("Failed to serialize session state: %v", err)
@@ -185,6 +256,12 @@ func (sm *SessionManager) CreateSession(duration time.Duration, description stri
 	}
 
 	sm.mu.Lock()
+	code, err := sm.newUniqueCodeLocked()
+	if err != nil {
+		sm.mu.Unlock()
+		return nil, err
+	}
+	session.ShortCode = code
 	sm.sessions[token] = session
 	sm.saveLocked()
 	sm.mu.Unlock()
@@ -321,6 +398,9 @@ func (sm *SessionManager) RevokeSession(token string) (*Session, bool) {
 	if ok {
 		delete(sm.sessions, token)
 		sm.revoked[token] = time.Now()
+		if session.ShortCode != "" {
+			sm.revokedCodes[session.ShortCode] = token
+		}
 		sm.saveLocked()
 	}
 	return session, ok
@@ -370,4 +450,42 @@ func generateToken(length int) (string, error) {
 // NewToken returns a cryptographically random hex token (length in bytes).
 func NewToken(length int) (string, error) {
 	return generateToken(length)
+}
+
+// shortAlphabet is Crockford base32: no vowels (avoiding words) and no
+// visually ambiguous characters (I, L, O, U excluded).
+const shortAlphabet = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"
+
+// ShortCodeLen is the length of hand-typable session codes (~40 bits of entropy).
+const ShortCodeLen = 8
+
+// generateShortCode returns a random hand-typable code like "K7M3Q9P2".
+// The alphabet is 32 symbols, so masking a random byte with 0x1f is unbiased.
+func generateShortCode() (string, error) {
+	b := make([]byte, ShortCodeLen)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	out := make([]byte, ShortCodeLen)
+	for i, c := range b {
+		out[i] = shortAlphabet[int(c)&0x1f]
+	}
+	return string(out), nil
+}
+
+// NormalizeShortCode canonicalizes user input: uppercase, dashes and spaces
+// removed. "k7m3-q9p2" and "K7M3 Q9P2" both become "K7M3Q9P2".
+func NormalizeShortCode(s string) string {
+	s = strings.ToUpper(strings.TrimSpace(s))
+	s = strings.ReplaceAll(s, "-", "")
+	s = strings.ReplaceAll(s, " ", "")
+	return s
+}
+
+// FormatShortCode renders a code for display: "K7M3-Q9P2".
+func FormatShortCode(code string) string {
+	if len(code) == ShortCodeLen {
+		return code[:4] + "-" + code[4:]
+	}
+	return code
 }
