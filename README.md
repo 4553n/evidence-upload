@@ -6,7 +6,7 @@ A secure forensic evidence data upload web application with session-based authen
 
 An illustrated user manual — installation, admin panel, uploader flow, Chain of
 Custody, tunnels, HTTPS, and troubleshooting — is available at
-[`docs/user-manual/Evidence-Upload-User-Manual-v2.2.6.pdf`](docs/user-manual/Evidence-Upload-User-Manual-v2.2.6.pdf)
+[`docs/user-manual/Evidence-Upload-User-Manual-v2.2.7.pdf`](docs/user-manual/Evidence-Upload-User-Manual-v2.2.7.pdf)
 (HTML source and screenshots in the same directory).
 
 ## Features
@@ -14,11 +14,11 @@ Custody, tunnels, HTTPS, and troubleshooting — is available at
 - **Secure Upload**: HMAC-signed session tokens with IP binding
 - **Resumable Uploads**: Chunked upload support for large files (10GB+)
 - **Drag & Drop**: Modern upload interface with progress bars
-- **Session Management**: Create, monitor, and revoke upload sessions
+- **Session Management**: Create, monitor, and revoke upload sessions; links survive server restarts
 - **Activity Tracking**: Full audit trail of all session activities
 - **Chain of Custody PDF**: Automatic forensic documentation on session revocation/expiration
 - **Triage Collection Package**: Upload and share triage packages with remote parties
-- **IP Detection**: Browser-based IP detection with upload for forensic documentation
+- **IP Detection**: Records both the server's and the uploader's IPs for forensic documentation
 - **Auto-open Browser**: Admin interface opens automatically on startup
 - **Config File Support**: Persistent configuration via `~/.evidence-upload.conf`
 - **Multi-channel Alerts**: Desktop, email, webhook, and log file notifications

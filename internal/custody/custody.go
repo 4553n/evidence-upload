@@ -134,9 +134,19 @@ func drawCaseInfo(pdf *gofpdf.Fpdf, session *models.Session, analystName string,
 
 	pdf.SetFont("DejaVu", "", 10)
 	if ipInfo != nil {
+		firstOf := func(vals ...string) string {
+			for _, v := range vals {
+				if v != "" {
+					return v
+				}
+			}
+			return ""
+		}
 		ipRows := [][2]string{
-			{"Local IP:", ipInfo["Local IP"]},
-			{"Public Internet IP:", ipInfo["Public Internet IP"]},
+			{"Uploader IP (server view):", firstOf(ipInfo["Uploader IP (as seen by server)"], ipInfo["Local IP"])},
+			{"Uploader Local IP:", ipInfo["Uploader Local IP"]},
+			{"Server Public IP:", firstOf(ipInfo["Server Public IP"], ipInfo["Public Internet IP"])},
+			{"Server LAN IP:", ipInfo["Server LAN IP"]},
 			{"Forwarded For:", ipInfo["Forwarded For"]},
 			{"Real IP Header:", ipInfo["Real IP Header"]},
 			{"Protocol:", ipInfo["Protocol"]},

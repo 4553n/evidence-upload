@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -38,6 +39,7 @@ type Config struct {
 	BaseURL         string
 	Version         string
 	AdminToken      string
+	ExternalIP      string
 }
 
 func NewServer(cfg *Config, sessions *models.SessionManager, storage *storage.Storage, alertMgr *alerts.Manager) *Server {
@@ -87,6 +89,7 @@ func (s *Server) routes() {
 	s.mux.HandleFunc("/api/files", s.handleListFiles)
 	s.mux.HandleFunc("/api/baseurl", s.handleBaseURL)
 	s.mux.HandleFunc("/api/my-ip", s.handleMyIP)
+	s.mux.HandleFunc("/api/status", s.handleStatus)
 	s.mux.HandleFunc("/admin", s.handleAdmin)
 	s.mux.HandleFunc("/admin/api/sessions", s.requireAdmin(s.handleAdminSessions))
 	s.mux.HandleFunc("/admin/api/session", s.requireAdmin(s.handleAdminSessionDetail))
@@ -165,7 +168,7 @@ func (s *Server) handleUpload(w http.ResponseWriter, r *http.Request) {
 
 	session, ok := s.sessions.GetSession(token)
 	if !ok {
-		http.Error(w, "Session expired or invalid", http.StatusUnauthorized)
+		s.rejectSession(w, token, http.StatusUnauthorized)
 		return
 	}
 
@@ -235,7 +238,7 @@ func (s *Server) handleUploadFile(w http.ResponseWriter, r *http.Request) {
 	clientIP := getClientIP(r)
 	session, ok := s.sessions.GetSession(token)
 	if !ok {
-		http.Error(w, "Session expired", http.StatusUnauthorized)
+		s.rejectSession(w, token, http.StatusUnauthorized)
 		return
 	}
 
@@ -460,7 +463,7 @@ func (s *Server) handleUploadComplete(w http.ResponseWriter, r *http.Request) {
 
 	session, ok := s.sessions.GetSession(token)
 	if !ok {
-		http.Error(w, "Session expired", http.StatusUnauthorized)
+		s.rejectSession(w, token, http.StatusUnauthorized)
 		return
 	}
 
@@ -607,7 +610,7 @@ func (s *Server) handleListFiles(w http.ResponseWriter, r *http.Request) {
 
 	session, ok := s.sessions.GetSession(token)
 	if !ok {
-		http.Error(w, "Session expired", http.StatusUnauthorized)
+		s.rejectSession(w, token, http.StatusUnauthorized)
 		return
 	}
 
@@ -669,13 +672,50 @@ func (s *Server) handleMyIP(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"ip":         ip,
-		"public_ip":  publicIP,
-		"forwarded":  forwarded,
-		"real_ip":    realIP,
-		"protocol":   proto,
-		"user_agent": r.UserAgent(),
+		// Uploader side (as observed by the server)
+		"ip":          ip,
+		"uploader_ip": ip,
+		"forwarded":   forwarded,
+		"real_ip":     realIP,
+		// Server side
+		"server_public_ip": serverPublicIP(publicIP, s.cfg.ExternalIP),
+		"server_lan_ip":    serverLANIPs(),
+		"public_ip":        publicIP, // legacy alias of the server's public IP
+		"protocol":         proto,
+		"user_agent":       r.UserAgent(),
 	})
+}
+
+// serverPublicIP prefers the analyst-configured external IP over detection.
+func serverPublicIP(detected, configured string) string {
+	if configured != "" {
+		return configured
+	}
+	return detected
+}
+
+// serverLANIPs lists the server's non-loopback IPv4 addresses.
+func serverLANIPs() string {
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		return "N/A"
+	}
+	var ips []string
+	for _, iface := range ifaces {
+		addrs, err := iface.Addrs()
+		if err != nil {
+			continue
+		}
+		for _, a := range addrs {
+			if ipnet, ok := a.(*net.IPNet); ok && !ipnet.IP.IsLoopback() && ipnet.IP.To4() != nil {
+				ips = append(ips, ipnet.IP.String())
+			}
+		}
+	}
+	if len(ips) == 0 {
+		return "N/A"
+	}
+	return strings.Join(ips, ", ")
 }
 
 func (s *Server) handleAdmin(w http.ResponseWriter, r *http.Request) {
@@ -809,7 +849,7 @@ func (s *Server) handleAdminTriagePackage(w http.ResponseWriter, r *http.Request
 
 	session, ok := s.sessions.GetSession(token)
 	if !ok {
-		http.Error(w, "Session expired", http.StatusUnauthorized)
+		s.rejectSession(w, token, http.StatusUnauthorized)
 		return
 	}
 
@@ -856,7 +896,7 @@ func (s *Server) handleTriageDownload(w http.ResponseWriter, r *http.Request) {
 
 	session, ok := s.sessions.GetSession(token)
 	if !ok {
-		http.Error(w, "Session expired or not found", http.StatusNotFound)
+		s.rejectSession(w, token, http.StatusNotFound)
 		return
 	}
 
@@ -878,6 +918,51 @@ func (s *Server) handleTriageDownload(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Disposition", "attachment; filename=\""+session.TriagePackage+"\"")
 	http.ServeFile(w, r, filePath)
+}
+
+// sessionProblemMessage explains why a token is unusable, distinguishing a
+// closed session from a stale or malformed link.
+func sessionProblemMessage(problem string) string {
+	switch problem {
+	case "revoked":
+		return "This session has been closed by the analyst"
+	case "expired":
+		return "This session has expired"
+	default:
+		return "Session not found - the link may be invalid or from a previous server run"
+	}
+}
+
+// rejectSession writes the precise reason a token cannot be used.
+func (s *Server) rejectSession(w http.ResponseWriter, token string, status int) {
+	http.Error(w, sessionProblemMessage(s.sessions.SessionProblem(token)), status)
+}
+
+// handleStatus lets the uploader's page detect that its session was closed
+// (revoked or expired) and stop collecting gracefully.
+func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
+	token := r.URL.Query().Get("token")
+	secret := r.URL.Query().Get("secret")
+
+	problem := s.sessions.SessionProblem(token)
+	if problem == "" && !s.sessions.ValidateToken(token, secret) {
+		problem = "unknown"
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	if problem != "" {
+		w.WriteHeader(http.StatusUnauthorized)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"valid":  false,
+			"reason": problem,
+		})
+		return
+	}
+	session, _ := s.sessions.GetSession(token)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"valid":      true,
+		"expires_at": session.ExpiresAt,
+	})
 }
 
 func getClientIP(r *http.Request) string {
@@ -935,25 +1020,32 @@ var uploadHTML = `<!DOCTYPE html>
         .status { margin-top: 15px; text-align: center; }
         .success { color: #4caf50; }
         .error { color: #f44336; }
+        .closed-banner { display: none; background: #7f1d1d; color: #fecaca; padding: 18px 22px; border-radius: 8px; margin-bottom: 22px; font-size: 15px; line-height: 1.6; }
+        .closed-banner.visible { display: block; }
         input[type="file"] { display: none; }
     </style>
 </head>
 <body>
     <div class="container">
+        <div class="closed-banner" id="closedBanner"></div>
         <h1>Secure Evidence Upload</h1>
         <div class="case-info">
             <div class="label">Case Reference</div>
             <div class="value">{{DESCRIPTION}}</div>
         </div>
         <div class="ip-info" id="ipInfo">
-            <div class="label">Your IP Addresses</div>
+            <div class="label">IP Detection</div>
             <div class="ip-row">
-                <span class="ip-label">Local:</span>
+                <span class="ip-label">Your IP (as seen by server):</span>
                 <span class="value" id="ipAddress">Detecting...</span>
             </div>
             <div class="ip-row">
-                <span class="ip-label">Public Internet:</span>
-                <span class="value" id="publicIpAddress">Detecting...</span>
+                <span class="ip-label">Your local IPs:</span>
+                <span class="value" id="localIps">Detecting...</span>
+            </div>
+            <div class="ip-row">
+                <span class="ip-label">Server public IP:</span>
+                <span class="value" id="serverIp">Detecting...</span>
             </div>
             <button class="btn-small" id="sendIpBtn" style="display:none;">Send IP Info</button>
             <div id="ipStatus" style="margin-top: 8px; font-size: 0.85em;"></div>
@@ -987,20 +1079,71 @@ var uploadHTML = `<!DOCTYPE html>
         let uploading = false;
         let myIpData = null;
 
+        // Browser-observed local interface addresses (WebRTC host candidates).
+        async function browserLocalIPs() {
+            try {
+                const pc = new RTCPeerConnection({iceServers: []});
+                pc.createDataChannel('x');
+                const ips = new Set();
+                pc.onicecandidate = (e) => {
+                    if (!e.candidate || !e.candidate.candidate) return;
+                    const parts = e.candidate.candidate.split(' ');
+                    if (parts.length > 4 && parts[4] && parts[4] !== '0.0.0.0') ips.add(parts[4]);
+                };
+                await pc.setLocalDescription(await pc.createOffer());
+                await new Promise(r => setTimeout(r, 1500));
+                pc.close();
+                return Array.from(ips).join(', ') || 'N/A';
+            } catch (e) {
+                return 'N/A';
+            }
+        }
+
         async function fetchMyIP() {
             try {
                 const resp = await fetch('/api/my-ip');
                 myIpData = await resp.json();
-                const localIp = myIpData.ip;
-                const publicIp = myIpData.public_ip || 'Unable to detect';
-                document.getElementById('ipAddress').textContent = localIp;
-                document.getElementById('publicIpAddress').textContent = publicIp;
+                myIpData.local_ips = await browserLocalIPs();
+                document.getElementById('ipAddress').textContent = myIpData.uploader_ip || myIpData.ip || 'Unable to detect';
+                document.getElementById('localIps').textContent = myIpData.local_ips;
+                document.getElementById('serverIp').textContent = myIpData.server_public_ip || myIpData.public_ip || 'Unable to detect';
                 document.getElementById('sendIpBtn').style.display = 'inline-block';
             } catch (e) {
                 document.getElementById('ipAddress').textContent = 'Unable to detect';
-                document.getElementById('publicIpAddress').textContent = 'Unable to detect';
+                document.getElementById('localIps').textContent = 'Unable to detect';
+                document.getElementById('serverIp').textContent = 'Unable to detect';
             }
         }
+
+        // Watch the session: when the analyst revokes it (or it expires), tell
+        // the uploader and stop collecting.
+        let sessionClosed = false;
+        function closeSessionUI(reason) {
+            if (sessionClosed) return;
+            sessionClosed = true;
+            const banner = document.getElementById('closedBanner');
+            banner.innerHTML = reason === 'expired'
+                ? '<strong>This upload session has expired.</strong><br>Evidence collection has ended. Please contact the analyst if you still need to send files.'
+                : '<strong>This upload session has been closed by the analyst.</strong><br>Evidence collection has ended. Thank you for your cooperation.';
+            banner.classList.add('visible');
+            setUploadEnabled(false);
+            uploading = true; // blocks any further drop/click handling
+            const btn = document.getElementById('sendIpBtn');
+            if (btn) btn.style.display = 'none';
+        }
+
+        async function checkSessionStatus() {
+            if (sessionClosed) return;
+            try {
+                const resp = await fetch('/api/status?token=' + token + '&secret=' + secret);
+                const data = await resp.json();
+                if (!data.valid) closeSessionUI(data.reason);
+            } catch (e) {
+                // transient network issue - keep trying
+            }
+        }
+        setInterval(checkSessionStatus, 10000);
+        checkSessionStatus();
 
         function setUploadEnabled(enabled) {
             dropZone.style.opacity = enabled ? '1' : '0.5';
@@ -1023,15 +1166,17 @@ var uploadHTML = `<!DOCTYPE html>
                 'IP Detection Report',
                 '===================',
                 'Date: ' + new Date().toISOString(),
-                'Local IP: ' + myIpData.ip,
-                'Public Internet IP: ' + (myIpData.public_ip || 'N/A'),
+                'Uploader IP (as seen by server): ' + (myIpData.uploader_ip || myIpData.ip || 'N/A'),
+                'Uploader Local IP: ' + (myIpData.local_ips || 'N/A'),
+                'Server Public IP: ' + (myIpData.server_public_ip || myIpData.public_ip || 'N/A'),
+                'Server LAN IP: ' + (myIpData.server_lan_ip || 'N/A'),
                 'Forwarded For: ' + (myIpData.forwarded || 'N/A'),
                 'Real IP Header: ' + (myIpData.real_ip || 'N/A'),
                 'Protocol: ' + myIpData.protocol,
                 'User Agent: ' + myIpData.user_agent
             ].join('\n');
 
-            const filename = 'ip_detection_' + (myIpData.public_ip || myIpData.ip).replace(/[^a-zA-Z0-9]/g, '_') + '.txt';
+            const filename = 'ip_detection_' + (myIpData.uploader_ip || myIpData.ip || 'unknown').replace(/[^a-zA-Z0-9]/g, '_') + '.txt';
             const blob = new Blob([content], {type: 'text/plain'});
             const file = new File([blob], filename, {type: 'text/plain'});
 
@@ -1212,6 +1357,8 @@ var adminHTML = `<!DOCTYPE html>
         .container { max-width: 1000px; margin: 0 auto; }
         h1 { margin-bottom: 5px; color: #0f3460; }
         .version { color: #888; font-size: 0.9em; margin-bottom: 25px; }
+        .token-bar { background: #16213e; border: 1px solid #2a3a5c; border-radius: 6px; padding: 10px 14px; margin-bottom: 25px; font-size: 0.9em; color: #aaa; display: flex; align-items: center; gap: 10px; }
+        .token-bar code { color: #7fd4ff; font-size: 0.95em; word-break: break-all; flex: 1; }
         .card { background: #16213e; border-radius: 8px; padding: 20px; margin-bottom: 20px; }
         .card h2 { margin-bottom: 15px; color: #0f3460; font-size: 1.2em; }
         table { width: 100` + `%; border-collapse: collapse; }
@@ -1255,6 +1402,11 @@ var adminHTML = `<!DOCTYPE html>
     <div class="container">
         <h1>Evidence Upload - Admin Panel</h1>
         <div class="version" id="appVersion"></div>
+        <div class="token-bar">
+            <span>Admin token:</span>
+            <code id="tokenValue">(loading...)</code>
+            <button class="btn btn-info btn-small" onclick="copyAdminToken()">Copy</button>
+        </div>
         <div class="card">
             <h2>Active Sessions <span class="refresh-info" id="refreshInfo"></span></h2>
             <table id="sessionsTable">
@@ -1344,9 +1496,25 @@ var adminHTML = `<!DOCTYPE html>
             if (t && t.trim()) {
                 adminToken = t.trim();
                 try { sessionStorage.setItem('adminToken', adminToken); } catch(e) {}
+                renderAdminToken();
                 return true;
             }
             return false;
+        }
+
+        function renderAdminToken() {
+            var el = document.getElementById('tokenValue');
+            if (el) {
+                el.textContent = adminToken || '(unknown - open the ?key= link from the server startup, or reload to enter it)';
+            }
+        }
+
+        function copyAdminToken() {
+            if (!adminToken) { promptAdminToken(); }
+            if (adminToken) {
+                copyText(adminToken);
+                alert('Admin token copied to clipboard');
+            }
         }
 
         async function loadBaseUrl() {
@@ -1634,6 +1802,7 @@ var adminHTML = `<!DOCTYPE html>
             }, 5000);
         }
 
+        renderAdminToken();
         loadBaseUrl().then(function() { loadSessions(); startAutoRefresh(); });
     </script>
 </body>

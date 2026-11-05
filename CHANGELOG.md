@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.2.7] - 2026-11-05
+
+### Fixed
+- **"Session expired" on valid links** - Sessions were kept in memory only, so any server restart silently invalidated every outstanding upload link; sessions are now persisted to `<storage>/.sessions.json` (owner-only, atomic writes) and restored at startup, including uploader IP locks, files, hashes, and activity
+- **Misleading IP detection labels** - The "Public Internet IP" was actually the *server's* public IP (detected server-side) while "Local IP" was the uploader as observed by the server; both perspectives are now explicit
+
+### Added
+- **Session status API and uploader notification** - When a session is revoked or expires, uploaders see a clear banner ("closed by the analyst" / "expired"), the form locks, and the page stops collecting; the reason is distinguished in all session error messages
+- **Admin token visible in the admin panel** - Displayed with a Copy button (it is also still printed at startup and carried by the auto-open `?key=` link)
+- **Richer IP detection report** - Now includes the uploader's IP as seen by the server, the uploader's browser-observed local IPs (WebRTC), the server's public IP (prefers `-external-ip`), and the server's LAN IPs; the CoC collector section mirrors the new fields (old reports still parse)
+
 ## [2.2.6] - 2026-11-05
 
 ### Changed

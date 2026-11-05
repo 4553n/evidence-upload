@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Evidence Upload — User Manual v2.2.6</title>
+<title>Evidence Upload — User Manual v2.2.7</title>
 <style>
   @page { size: A4; margin: 0; }
   :root {
@@ -146,7 +146,7 @@
   <h1>Evidence Upload</h1>
   <div class="sub">User Manual</div>
   <div class="meta">
-    <strong>Version 2.2.6</strong><br>
+    <strong>Version 2.2.7</strong><br>
     November 2026<br><br>
     Secure forensic evidence collection, upload sessions,<br>
     and Chain of Custody documentation
@@ -207,8 +207,8 @@
   further steps are needed:
 </p>
 <pre><span class="c"># macOS (Apple Silicon)</span>
-curl -LO https://github.com/4553n/evidence-upload/releases/download/v2.2.6/evidence-upload-v2.2.6-macos-arm64.tar.gz
-tar -xzf evidence-upload-v2.2.6-macos-arm64.tar.gz
+curl -LO https://github.com/4553n/evidence-upload/releases/download/v2.2.7/evidence-upload-v2.2.7-macos-arm64.tar.gz
+tar -xzf evidence-upload-v2.2.7-macos-arm64.tar.gz
 
 <span class="c"># macOS (Intel) — use the -macos-amd64 archive</span>
 <span class="c"># Linux — use the -linux-amd64 archive</span>
@@ -231,10 +231,10 @@ tar -xzf evidence-upload-v2.2.6-macos-arm64.tar.gz
   certificate. The tunnel client is built into the application — nothing is
   downloaded or installed:
 </p>
-<pre>$ ./evidence-upload-v2.2.6-macos-arm64
+<pre>$ ./evidence-upload-v2.2.7-macos-arm64
 Detected external IP: 203.0.113.44
 Tunnel established: bore.pub:41739 -&gt; localhost:8443
-Evidence Upload Server v2.2.6 starting on :8443
+Evidence Upload Server v2.2.7 starting on :8443
 Storage: ./evidence
 Base URL: https://bore.pub:41739
 <span class="k">Admin token: 3f2a91c0e7b4d5a8c1e2f304b5d6a7c8</span>  <span class="c">(keep private; set via -admin-token or ADMIN_TOKEN)</span>
@@ -277,7 +277,9 @@ Opening admin interface...</pre>
   The admin panel at <code>/admin</code> lists every active session. The table
   refreshes automatically every five seconds — upload counts, file names, and
   hashes appear without reloading the page. The refresh pauses while the tab is
-  hidden and resumes when you return.
+  hidden and resumes when you return. The admin token is shown at the top of the
+  panel with a <strong>Copy</strong> button, so it can be shared or re-used
+  without digging through the console.
 </p>
 <figure>
   <img src="img/admin-main.png" alt="Admin panel sessions table">
@@ -347,11 +349,16 @@ Opening admin interface...</pre>
 </figure>
 <h3>The uploader's steps</h3>
 <ol>
-  <li><strong>Send IP info</strong> — the page generates a small IP detection report and uploads it as the first evidence file. It documents the collector's network context (local IP, public IP, user agent) in the Chain of Custody record. The file form unlocks after this step.</li>
+  <li><strong>Send IP info</strong> — the page generates an IP detection report and uploads it as the first evidence file. It documents <em>both sides</em> of the connection: the uploader's IP as seen by the server, the uploader's browser-local IPs, the server's public IP, and the server's LAN IPs, plus user agent and protocol. The file form unlocks after this step.</li>
   <li><strong>Drop files</strong> — drag and drop or use the file picker; multiple files are supported. Progress bars show per-file status.</li>
   <li><strong>Large files</strong> — files upload in chunks and can resume after an interruption without restarting from zero.</li>
   <li><strong>Confirm</strong> — the file list shows each completed file with its SHA-256, matching what the analyst sees.</li>
 </ol>
+<p>
+  The page also keeps an eye on the session: if the analyst revokes it or it
+  expires, a notice appears within seconds, the upload form locks itself, and
+  no further files can be sent.
+</p>
 <div class="callout info">
   <strong>IP binding</strong> — the first page access locks the session to the
   uploader's IP. A later attempt from a different IP is rejected and raises a
@@ -391,7 +398,9 @@ Opening admin interface...</pre>
   Revoking writes <code>CHAIN_OF_CUSTODY.pdf</code> (plus a
   <code>.sha256</code> sidecar of the PDF itself) into the case folder next to
   the evidence. Sessions that expire without being revoked get the same document
-  automatically, signed as <em>System (expired)</em>.
+  automatically, signed as <em>System (expired)</em>. The remote party is
+  notified at the same moment — their upload page shows that the session was
+  closed and locks the upload form.
 </p>
 <figure>
   <img src="img/coc-page-1.png" alt="Chain of Custody PDF, page 1">
@@ -400,7 +409,7 @@ Opening admin interface...</pre>
 <h3>The document contains</h3>
 <ul>
   <li><strong>Case information</strong> — description, session token, creation and expiry times, status, analyst, generation time</li>
-  <li><strong>Collector IP information</strong> — parsed from the uploader's IP detection report (local IP, public IP, user agent)</li>
+  <li><strong>Collector IP information</strong> — parsed from the uploader's IP detection report (uploader IP, uploader local IPs, server public IP, server LAN IP, user agent)</li>
   <li><strong>Evidence items</strong> — every file with size and SHA-256 hash</li>
   <li><strong>Activity timeline</strong> — the full audit trail with timestamps, actions, and source IPs</li>
   <li><strong>Integrity verification</strong> — file count, total size, session credentials, and instructions for verifying the <code>.sha256</code> sidecars with <code>sha256sum -c</code></li>
@@ -513,7 +522,9 @@ CLOUDFLARE_DOMAIN=evidence.example.com</pre>
   <tr>
     <td><strong>Session credentials</strong></td>
     <td>Uploads require the session's HMAC token <em>and</em> secret — both are
-    128-bit random values. Secrets are never included in the session list API.</td>
+    128-bit random values. Secrets are never included in the session list API.
+    Sessions persist to <code>&lt;storage&gt;/.sessions.json</code> (owner-only
+    permissions), so links survive server restarts.</td>
   </tr>
   <tr>
     <td><strong>IP binding</strong></td>
@@ -571,6 +582,13 @@ CLOUDFLARE_DOMAIN=evidence.example.com</pre>
     panel and enter the token printed at server startup.</td>
   </tr>
   <tr>
+    <td>Upload link reports a session problem</td>
+    <td>The message names the exact reason: <em>closed by the analyst</em>
+    (revoked), <em>expired</em>, or <em>not found</em> (malformed link, or a link
+    from a server older than v2.2.7 that lost sessions on restart). Ask the
+    analyst for a fresh link if in doubt.</td>
+  </tr>
+  <tr>
     <td>Session rejects the uploader</td>
     <td>IP binding: the session was first accessed from a different address. Create
     a new session if the change is legitimate.</td>
@@ -613,7 +631,7 @@ $ sha256sum -c SHA256SUMS            <span class="c"># Linux</span></pre>
   <li><strong>DejaVu fonts</strong> (embedded in the CoC generator) — Bitstream Vera / DejaVu license; the full text ships in <code>internal/custody/fonts/LICENSE-DejaVu.txt</code></li>
 </ul>
 <p class="small" style="margin-top:22px">
-  Evidence Upload v2.2.6 — User Manual · Generated 2026-11-05 ·
+  Evidence Upload v2.2.7 — User Manual · Generated 2026-11-05 ·
   Interfaces shown are from the v2.2.x series.
 </p>
 

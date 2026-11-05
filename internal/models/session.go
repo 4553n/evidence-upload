@@ -4,6 +4,10 @@ import (
 	"crypto/hmac"
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"log"
+	"os"
 	"regexp"
 	"strings"
 	"sync"
@@ -57,14 +61,87 @@ func (s *Session) Clone() *Session {
 
 type SessionManager struct {
 	sessions map[string]*Session
+	revoked  map[string]time.Time
 	mu       sync.RWMutex
 	secret   []byte
+	persist  string // path of the state file; empty disables persistence
+}
+
+type managerState struct {
+	Sessions map[string]*Session     `json:"sessions"`
+	Revoked  map[string]time.Time    `json:"revoked"`
 }
 
 func NewSessionManager(secret string) *SessionManager {
 	return &SessionManager{
 		sessions: make(map[string]*Session),
+		revoked:  make(map[string]time.Time),
 		secret:   []byte(secret),
+	}
+}
+
+// SetPersistence enables durable session storage at path. Sessions survive
+// server restarts — without this, every restart silently invalidates every
+// outstanding upload link.
+func (sm *SessionManager) SetPersistence(path string) {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+	sm.persist = path
+}
+
+// Load restores persisted sessions and revocation records. Expired sessions
+// are dropped. Returns the number of active sessions restored.
+func (sm *SessionManager) Load() (int, error) {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+
+	data, err := os.ReadFile(sm.persist)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return 0, nil
+		}
+		return 0, err
+	}
+	var st managerState
+	if err := json.Unmarshal(data, &st); err != nil {
+		return 0, fmt.Errorf("parse session state: %w", err)
+	}
+	restored := 0
+	now := time.Now()
+	for token, s := range st.Sessions {
+		if s == nil || now.After(s.ExpiresAt) {
+			continue
+		}
+		sm.sessions[token] = s
+		restored++
+	}
+	if st.Revoked != nil {
+		for t, at := range st.Revoked {
+			sm.revoked[t] = at
+		}
+	}
+	return restored, nil
+}
+
+// saveLocked persists the current state. Callers must hold sm.mu.
+// The write is atomic (temp file + rename) and owner-readable only.
+func (sm *SessionManager) saveLocked() {
+	if sm.persist == "" {
+		return
+	}
+	st := managerState{Sessions: sm.sessions, Revoked: sm.revoked}
+	data, err := json.MarshalIndent(st, "", " ")
+	if err != nil {
+		log.Printf("Failed to serialize session state: %v", err)
+		return
+	}
+	tmp := sm.persist + ".tmp"
+	if err := os.WriteFile(tmp, data, 0600); err != nil {
+		log.Printf("Failed to write session state: %v", err)
+		return
+	}
+	if err := os.Rename(tmp, sm.persist); err != nil {
+		log.Printf("Failed to save session state: %v", err)
 	}
 }
 
@@ -109,6 +186,7 @@ func (sm *SessionManager) CreateSession(duration time.Duration, description stri
 
 	sm.mu.Lock()
 	sm.sessions[token] = session
+	sm.saveLocked()
 	sm.mu.Unlock()
 
 	return session, nil
@@ -141,6 +219,7 @@ func (sm *SessionManager) CleanupExpired() []*Session {
 			delete(sm.sessions, token)
 		}
 	}
+	sm.saveLocked()
 	return expired
 }
 
@@ -168,6 +247,7 @@ func (sm *SessionManager) LockSession(token, ip string) bool {
 
 	session.UploaderIP = ip
 	session.IsLocked = true
+	sm.saveLocked()
 	return true
 }
 
@@ -186,6 +266,7 @@ func (sm *SessionManager) AddUploadedFile(token, filename, hash string, size int
 		Hash: hash,
 	})
 	session.TotalSize += size
+	sm.saveLocked()
 }
 
 func (sm *SessionManager) AddActivity(token, action, ip, userAgent, details string) {
@@ -204,6 +285,7 @@ func (sm *SessionManager) AddActivity(token, action, ip, userAgent, details stri
 		UserAgent: userAgent,
 		Details:   details,
 	})
+	sm.saveLocked()
 }
 
 func (sm *SessionManager) GetSessionDetail(token string) (*Session, bool) {
@@ -238,8 +320,29 @@ func (sm *SessionManager) RevokeSession(token string) (*Session, bool) {
 	session, ok := sm.sessions[token]
 	if ok {
 		delete(sm.sessions, token)
+		sm.revoked[token] = time.Now()
+		sm.saveLocked()
 	}
 	return session, ok
+}
+
+// SessionProblem reports why a token cannot be used: "" (fine), "revoked",
+// "expired", or "unknown". This lets clients tell an uploader whose session was
+// closed apart from a malformed or stale link.
+func (sm *SessionManager) SessionProblem(token string) string {
+	sm.mu.RLock()
+	defer sm.mu.RUnlock()
+
+	if session, ok := sm.sessions[token]; ok {
+		if time.Now().After(session.ExpiresAt) {
+			return "expired"
+		}
+		return ""
+	}
+	if _, ok := sm.revoked[token]; ok {
+		return "revoked"
+	}
+	return "unknown"
 }
 
 func (sm *SessionManager) SetTriagePackage(token, filename string) {
@@ -252,6 +355,7 @@ func (sm *SessionManager) SetTriagePackage(token, filename string) {
 	}
 
 	session.TriagePackage = filename
+	sm.saveLocked()
 }
 
 func generateToken(length int) (string, error) {

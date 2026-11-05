@@ -74,6 +74,14 @@ func main() {
 		log.Fatalf("Failed to initialize storage: %v", err)
 	}
 
+	// Sessions persist to disk so upload links survive server restarts.
+	sessions.SetPersistence(filepath.Join(cfg.StoragePath, ".sessions.json"))
+	if n, err := sessions.Load(); err != nil {
+		log.Printf("Warning: failed to restore sessions: %v", err)
+	} else if n > 0 {
+		log.Printf("Restored %d active session(s) from previous run", n)
+	}
+
 	alertMgr := alerts.NewManager(cfg.AlertEmail, cfg.AlertWebhook, cfg.AlertLogFile, cfg.AlertDesktop)
 
 	srvConfig := &server.Config{
@@ -83,6 +91,7 @@ func main() {
 		BaseURL:         cfg.BaseURL,
 		Version:         Version,
 		AdminToken:      adminToken,
+		ExternalIP:      cfg.ExternalIP,
 	}
 
 	srv := server.NewServer(srvConfig, sessions, store, alertMgr)
