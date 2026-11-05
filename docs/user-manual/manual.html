@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Evidence Upload — User Manual v2.2.3</title>
+<style>
+  @page { size: A4; margin: 0; }
+  :root {
+    --navy: #0f3460;
+    --navy-dark: #16213e;
+    --red: #e94560;
+    --ink: #1c2333;
+    --muted: #5a6478;
+    --line: #d8dde8;
+    --code-bg: #101828;
+  }
+  * { box-sizing: border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "DejaVu Sans", Roboto, sans-serif;
+    color: var(--ink);
+    font-size: 10.5pt;
+    line-height: 1.55;
+    margin: 0;
+    padding: 0 16mm 12mm;
+  }
+  h1, h2, h3 { color: var(--navy); line-height: 1.25; }
+  h2 {
+    font-size: 16pt;
+    border-bottom: 2.5px solid var(--navy);
+    padding-bottom: 3px;
+    margin: 26px 0 12px;
+  }
+  h3 { font-size: 12pt; margin: 18px 0 8px; }
+  p { margin: 7px 0; }
+  ul, ol { margin: 7px 0 10px; padding-left: 22px; }
+  li { margin: 3px 0; }
+  code {
+    font-family: "DejaVu Sans Mono", Menlo, Consolas, monospace;
+    font-size: 8.8pt;
+    background: #eef1f7;
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    padding: 0 4px;
+  }
+  pre {
+    background: var(--code-bg);
+    color: #d7e0f0;
+    border-radius: 6px;
+    padding: 12px 14px;
+    font-family: "DejaVu Sans Mono", Menlo, Consolas, monospace;
+    font-size: 8.6pt;
+    line-height: 1.5;
+    overflow: hidden;
+    white-space: pre-wrap;
+    margin: 10px 0;
+  }
+  pre .c { color: #7f8ea3; }
+  pre .k { color: #7fd4ff; }
+  pre .s { color: #9fe6a0; }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 10px 0 14px;
+    font-size: 9.3pt;
+  }
+  th {
+    background: var(--navy);
+    color: #fff;
+    text-align: left;
+    padding: 7px 9px;
+  }
+  td {
+    border-bottom: 1px solid var(--line);
+    padding: 6px 9px;
+    vertical-align: top;
+  }
+  tr:nth-child(even) td { background: #f4f6fa; }
+  figure {
+    margin: 14px 0 18px;
+    text-align: center;
+    page-break-inside: avoid;
+  }
+  figure img {
+    max-width: 100%;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+  }
+  figcaption {
+    font-size: 8.8pt;
+    color: var(--muted);
+    margin-top: 6px;
+    font-style: italic;
+  }
+  .cover {
+    page-break-after: always;
+    height: 258mm;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    text-align: center;
+  }
+  .cover .mark {
+    width: 84px; height: 84px;
+    margin: 0 auto 26px;
+    border-radius: 18px;
+    background: linear-gradient(135deg, var(--navy) 0%, var(--red) 100%);
+  }
+  .cover h1 { font-size: 34pt; margin: 0 0 6px; letter-spacing: -0.5px; }
+  .cover .sub { font-size: 15pt; color: var(--muted); margin-bottom: 42px; }
+  .cover .meta { font-size: 10.5pt; color: var(--muted); line-height: 1.9; }
+  .cover .meta strong { color: var(--ink); }
+  .toc { page-break-after: always; }
+  .callout {
+    border-left: 4px solid var(--red);
+    background: #fdf0f3;
+    padding: 9px 13px;
+    border-radius: 0 6px 6px 0;
+    margin: 12px 0;
+    page-break-inside: avoid;
+  }
+  .callout.info {
+    border-left-color: var(--navy);
+    background: #eef2fa;
+  }
+  .callout strong:first-child { display: block; margin-bottom: 2px; }
+  .pb { page-break-before: always; }
+  .kbd {
+    background: var(--navy-dark);
+    color: #fff;
+    border-radius: 3px;
+    padding: 0 5px;
+    font-size: 8.5pt;
+    font-family: "DejaVu Sans Mono", monospace;
+  }
+  .small { font-size: 8.8pt; color: var(--muted); }
+</style>
+</head>
+<body>
+
+<!-- ============================== COVER ============================== -->
+<div class="cover">
+  <div class="mark"></div>
+  <h1>Evidence Upload</h1>
+  <div class="sub">User Manual</div>
+  <div class="meta">
+    <strong>Version 2.2.3</strong><br>
+    November 2026<br><br>
+    Secure forensic evidence collection, upload sessions,<br>
+    and Chain of Custody documentation
+  </div>
+</div>
+
+<!-- ============================== TOC ============================== -->
+<div class="toc">
+  <h2>Contents</h2>
+  <ol>
+    <li>Overview</li>
+    <li>Installing and Running</li>
+    <li>Quick Start Workflow</li>
+    <li>The Admin Panel</li>
+    <li>Creating an Upload Session</li>
+    <li>Monitoring a Session</li>
+    <li>Receiving Evidence — the Uploader's View</li>
+    <li>Triage Collection Packages</li>
+    <li>Revoking Sessions and the Chain of Custody PDF</li>
+    <li>Command-Line Reference</li>
+    <li>Configuration File</li>
+    <li>Tunnels and Remote Access</li>
+    <li>Security Model</li>
+    <li>Troubleshooting</li>
+    <li>Verifying Downloads and Licenses</li>
+  </ol>
+</div>
+
+<!-- ============================== 1. OVERVIEW ============================== -->
+<h2>1. Overview</h2>
+<p>
+  Evidence Upload is a self-hosted web application for collecting digital forensic
+  evidence from remote parties. The analyst runs the server, creates a one-time
+  upload session, and shares a link. The remote party uploads evidence through a
+  simple browser interface — no account, no client software. Every file is hashed
+  on arrival, and closing the session produces a Chain of Custody PDF suitable for
+  case documentation.
+</p>
+<h3>Key capabilities</h3>
+<ul>
+  <li><strong>Secure upload sessions</strong> — HMAC-signed token + secret per session, optional IP binding to the first uploader</li>
+  <li><strong>Large and resumable uploads</strong> — chunked uploads for multi-gigabyte files with resume support</li>
+  <li><strong>Integrity by default</strong> — SHA-256 computed server-side on arrival, <code>.sha256</code> sidecar files for independent verification</li>
+  <li><strong>Live admin panel</strong> — sessions, per-file names and hashes, and activity history refresh automatically</li>
+  <li><strong>Chain of Custody PDF</strong> — generated automatically on revocation or expiry, with full evidence and activity tables</li>
+  <li><strong>Triage package sharing</strong> — publish a collection package behind a download link for the remote party</li>
+  <li><strong>Alerts</strong> — desktop, email, webhook, and log-file notifications for uploads and access anomalies</li>
+  <li><strong>Tunnel support</strong> — reach internet uploaders via Cloudflare Tunnel or bore without opening firewall ports</li>
+</ul>
+
+<!-- ============================== 2. INSTALLING ============================== -->
+<h2 class="pb">2. Installing and Running</h2>
+<h3>2.1 Download</h3>
+<p>
+  Download the archive for your platform from the
+  <code>Releases</code> page of the project repository. Unix builds ship as
+  <code>.tar.gz</code> archives — extracting restores the executable bit, so no
+  further steps are needed:
+</p>
+<pre><span class="c"># macOS (Apple Silicon)</span>
+curl -LO https://github.com/4553n/evidence-upload/releases/download/v2.2.3/evidence-upload-v2.2.3-macos-arm64.tar.gz
+tar -xzf evidence-upload-v2.2.3-macos-arm64.tar.gz
+
+<span class="c"># macOS (Intel) — use the -macos-amd64 archive</span>
+<span class="c"># Linux — use the -linux-amd64 archive</span>
+<span class="c"># Windows — download the .exe and run it directly</span></pre>
+
+<div class="callout">
+  <strong>macOS note</strong>
+  If you downloaded a bare binary instead of the archive, macOS strips the
+  executable bit and Safari's downloads quarantine it. Fix both with
+  <code>chmod +x evidence-upload</code> and
+  <code>xattr -d com.apple.quarantine evidence-upload</code>, or right-click →
+  <strong>Open</strong> → <strong>Open</strong>.
+</div>
+
+<h3>2.2 First run</h3>
+<p>Start the server from a terminal. With no flags it listens on port <code>8443</code> and stores evidence in <code>./evidence</code>:</p>
+<pre>$ ./evidence-upload-v2.2.3-macos-arm64
+Evidence Upload Server v2.2.3 starting on :8443
+Storage: ./evidence
+Base URL:
+<span class="k">Admin token: 3f2a91c0e7b4d5a8c1e2f304b5d6a7c8</span>  <span class="c">(keep private; set via -admin-token or ADMIN_TOKEN)</span>
+Opening admin interface...</pre>
+<p>
+  The browser opens the admin panel automatically, pre-authenticated with the
+  admin token. Use <code>-no-browser</code> to suppress the auto-open.
+</p>
+<div class="callout info">
+  <strong>The admin token is your password.</strong>
+  It is printed at every startup (or set your own with <code>-admin-token</code>).
+  Anyone holding it has full administrative control of the server. Store it like
+  a credential — in a password manager, not in a shared document.
+</div>
+
+<!-- ============================== 3. QUICK START ============================== -->
+<h2>3. Quick Start Workflow</h2>
+<ol>
+  <li><strong>Create a session</strong> in the admin panel — give it a duration and a case description (e.g. a case number).</li>
+  <li><strong>Copy the upload link</strong> that is generated and send it to the remote party over a trusted channel.</li>
+  <li><strong>Remote party uploads</strong> evidence — the first page access records their IP; they send IP info, then drag and drop files.</li>
+  <li><strong>Monitor progress</strong> live in the admin panel — file names, sizes, SHA-256 hashes, and activity appear as uploads arrive.</li>
+  <li><strong>Revoke the session</strong> when collection is done — this closes uploads and generates the Chain of Custody PDF in the case folder.</li>
+</ol>
+
+<!-- ============================== 4. ADMIN PANEL ============================== -->
+<h2 class="pb">4. The Admin Panel</h2>
+<p>
+  The admin panel at <code>/admin</code> lists every active session. The table
+  refreshes automatically every five seconds — upload counts, file names, and
+  hashes appear without reloading the page. The refresh pauses while the tab is
+  hidden and resumes when you return.
+</p>
+<figure>
+  <img src="img/admin-main.png" alt="Admin panel sessions table">
+  <figcaption>Figure 1 — The admin panel. Each row shows the session token, case description, validity window, and the uploaded files with short SHA-256 prefixes.</figcaption>
+</figure>
+<h3>Table columns</h3>
+<table>
+  <tr><th>Column</th><th>Meaning</th></tr>
+  <tr><td><strong>Token</strong></td><td>Session identifier — click it to open the full session detail view</td></tr>
+  <tr><td><strong>Description</strong></td><td>The case description chosen at creation; also names the evidence folder on disk</td></tr>
+  <tr><td><strong>Created / Expires</strong></td><td>Session validity window; expired sessions are cleaned up automatically</td></tr>
+  <tr><td><strong>Files</strong></td><td>Upload count, with each file name and a short SHA-256 prefix</td></tr>
+  <tr><td><strong>Actions</strong></td><td><em>Revoke</em> — closes the session and generates the Chain of Custody PDF</td></tr>
+</table>
+
+<!-- ============================== 5. CREATE ============================== -->
+<h2>5. Creating an Upload Session</h2>
+<p>
+  Click <strong>Create New Session</strong>, choose how long the link should stay
+  valid, and enter a description. Use whatever identifies the case for you —
+  a case number, ticket ID, or short summary. The description becomes the name of
+  the evidence folder on disk (sanitized to a safe form).
+</p>
+<figure>
+  <img src="img/admin-create.png" alt="Create session dialog">
+  <figcaption>Figure 2 — The create-session dialog.</figcaption>
+</figure>
+<p>When the session is created, the panel shows the upload link to share:</p>
+<pre>https://your-host:8443/?token=<span class="s">f95f5997d290…</span>&amp;secret=<span class="s">8b51b8bbfb0e…</span></pre>
+<div class="callout">
+  <strong>Treat the link as a bearer credential.</strong>
+  The <code>token</code> identifies the session; the <code>secret</code> authorizes
+  uploads to it. Anyone with the full link can upload evidence into the case.
+  Send it to the intended party only, over a trusted channel.
+</div>
+
+<!-- ============================== 6. MONITORING ============================== -->
+<h2 class="pb">6. Monitoring a Session</h2>
+<p>
+  Click a session's token to open its detail view. It updates live while open and
+  shows everything recorded about the session so far.
+</p>
+<figure>
+  <img src="img/admin-detail.png" alt="Session detail dialog">
+  <figcaption>Figure 3 — Session detail: credentials, status, per-file SHA-256 hashes with copy buttons, and the activity history.</figcaption>
+</figure>
+<h3>What you see</h3>
+<ul>
+  <li><strong>Token / Secret</strong> — the full values, so you can rebuild the upload link if needed</li>
+  <li><strong>Status</strong> — <em>Not yet accessed</em> until the uploader opens the link; afterwards it shows the IP the session is bound to</li>
+  <li><strong>Total Size / Files</strong> — running totals for the session</li>
+  <li><strong>Uploaded Files</strong> — name, size, and the <em>full</em> SHA-256 for every file, each with a <strong>Copy</strong> button for verification workflows</li>
+  <li><strong>Activity History</strong> — timestamped audit trail: page access, file uploads, IP information submissions, all with source IPs</li>
+  <li><strong>Triage Package</strong> — attach or replace a collection package and copy its download link (see §8)</li>
+</ul>
+
+<!-- ============================== 7. UPLOADER VIEW ============================== -->
+<h2>7. Receiving Evidence — the Uploader's View</h2>
+<p>
+  The remote party opens the upload link in any modern browser. There is nothing
+  to install and no account to create. The page is intentionally minimal — it can
+  only upload, never download.
+</p>
+<figure>
+  <img src="img/upload-page.png" alt="Uploader page">
+  <figcaption>Figure 4 — The uploader's page: IP information step, drag-and-drop area, and the list of already-uploaded files with hashes.</figcaption>
+</figure>
+<h3>The uploader's steps</h3>
+<ol>
+  <li><strong>Send IP info</strong> — the page generates a small IP detection report and uploads it as the first evidence file. It documents the collector's network context (local IP, public IP, user agent) in the Chain of Custody record. The file form unlocks after this step.</li>
+  <li><strong>Drop files</strong> — drag and drop or use the file picker; multiple files are supported. Progress bars show per-file status.</li>
+  <li><strong>Large files</strong> — files upload in chunks and can resume after an interruption without restarting from zero.</li>
+  <li><strong>Confirm</strong> — the file list shows each completed file with its SHA-256, matching what the analyst sees.</li>
+</ol>
+<div class="callout info">
+  <strong>IP binding</strong> — the first page access locks the session to the
+  uploader's IP. A later attempt from a different IP is rejected and raises a
+  security alert. If the uploader's address legitimately changes, create a new
+  session.
+</div>
+
+<!-- ============================== 8. TRIAGE ============================== -->
+<h2>8. Triage Collection Packages</h2>
+<p>
+  A triage package is a collection artifact (for example a full triage output zip)
+  that you want to hand <em>to</em> the remote party — typically an acquisition
+  script output or a package they must run and return. From a session's detail
+  view, use <strong>Send Triage Package</strong> to upload one, or
+  <strong>Replace</strong> to swap it later.
+</p>
+<p>Each package gets a public download link:</p>
+<pre>https://your-host:8443/triage/<span class="s">f95f5997d290…</span></pre>
+<div class="callout">
+  <strong>The triage link is unauthenticated by design</strong> — the session
+  token in the URL is the only protection. Share it only with the intended
+  recipient, and revoke the session when the transfer is complete.
+</div>
+
+<!-- ============================== 9. REVOKE + CoC ============================== -->
+<h2 class="pb">9. Revoking Sessions and the Chain of Custody PDF</h2>
+<p>
+  When collection is finished, click <strong>Revoke</strong>. You are prompted for
+  the analyst name that will appear on the certification block of the Chain of
+  Custody document.
+</p>
+<figure>
+  <img src="img/admin-revoke.png" alt="Revoke session dialog">
+  <figcaption>Figure 5 — The revoke dialog. Revoking closes the session for further uploads and generates the documentation.</figcaption>
+</figure>
+<p>
+  Revoking writes <code>CHAIN_OF_CUSTODY.pdf</code> (plus a
+  <code>.sha256</code> sidecar of the PDF itself) into the case folder next to
+  the evidence. Sessions that expire without being revoked get the same document
+  automatically, signed as <em>System (expired)</em>.
+</p>
+<figure>
+  <img src="img/coc-page-1.png" alt="Chain of Custody PDF, page 1">
+  <figcaption>Figure 6 — The generated Chain of Custody document: case information, collector IP details, and the evidence table with SHA-256 hashes.</figcaption>
+</figure>
+<h3>The document contains</h3>
+<ul>
+  <li><strong>Case information</strong> — description, session token, creation and expiry times, status, analyst, generation time</li>
+  <li><strong>Collector IP information</strong> — parsed from the uploader's IP detection report (local IP, public IP, user agent)</li>
+  <li><strong>Evidence items</strong> — every file with size and SHA-256 hash</li>
+  <li><strong>Activity timeline</strong> — the full audit trail with timestamps, actions, and source IPs</li>
+  <li><strong>Integrity verification</strong> — file count, total size, session credentials, and instructions for verifying the <code>.sha256</code> sidecars with <code>sha256sum -c</code></li>
+  <li><strong>Certification block</strong> — analyst signature and date lines</li>
+</ul>
+<p class="small">
+  Text in the PDF is rendered with embedded Unicode fonts (DejaVu), so case names
+  in any script — Cyrillic, Greek, Hebrew, accented Latin — render correctly.
+  Characters outside the fonts' coverage (emoji, CJK) are marked with a
+  replacement glyph rather than breaking the document. The footer records the
+  exact software version that generated the document.
+</p>
+
+<!-- ============================== 10. CLI ============================== -->
+<h2 class="pb">10. Command-Line Reference</h2>
+<table>
+  <tr><th>Flag</th><th>Default</th><th>Description</th></tr>
+  <tr><td><code>-port</code></td><td><code>8443</code></td><td>Server port</td></tr>
+  <tr><td><code>-storage</code></td><td><code>./evidence</code></td><td>Local storage path for uploaded files</td></tr>
+  <tr><td><code>-backup</code></td><td><code>""</code></td><td>Network share backup path (optional)</td></tr>
+  <tr><td><code>-expire</code></td><td><code>24h</code></td><td>Default session expiration duration</td></tr>
+  <tr><td><code>-secret</code></td><td>auto-generated</td><td>HMAC secret key</td></tr>
+  <tr><td><code>-admin-token</code></td><td>auto-generated</td><td>Admin panel token (printed at startup)</td></tr>
+  <tr><td><code>-max-size</code></td><td><code>10737418240</code></td><td>Maximum upload size in bytes (10 GB)</td></tr>
+  <tr><td><code>-alert-email</code></td><td><code>""</code></td><td>Email address for security alerts</td></tr>
+  <tr><td><code>-alert-webhook</code></td><td><code>""</code></td><td>Webhook URL for alerts (Slack/Discord/etc.)</td></tr>
+  <tr><td><code>-alert-desktop</code></td><td><code>true</code></td><td>Enable desktop notifications</td></tr>
+  <tr><td><code>-alert-log</code></td><td><code>./alerts.log</code></td><td>Log file for security alerts</td></tr>
+  <tr><td><code>-external-ip</code></td><td>auto-detected</td><td>External/public IP for internet access</td></tr>
+  <tr><td><code>-base-url</code></td><td>auto-detected</td><td>Base URL used in generated links</td></tr>
+  <tr><td><code>-tunnel</code></td><td><code>""</code></td><td>Tunnel provider: <code>bore</code>, <code>cloudflare</code>, or <code>external</code></td></tr>
+  <tr><td><code>-bore-path</code></td><td>auto-detected</td><td>Path to the bore binary</td></tr>
+  <tr><td><code>-cloudflare-path</code></td><td>auto-detected</td><td>Path to the cloudflared binary</td></tr>
+  <tr><td><code>-cloudflare-domain</code></td><td><code>""</code></td><td>Custom domain for the Cloudflare tunnel</td></tr>
+  <tr><td><code>-cloudflare-token</code></td><td><code>""</code></td><td>Cloudflare tunnel token (from the dashboard)</td></tr>
+  <tr><td><code>-tunnel-name</code></td><td><code>""</code></td><td>Named tunnel for Cloudflare (created if missing)</td></tr>
+  <tr><td><code>-tunnel-url</code></td><td><code>""</code></td><td>External tunnel URL (multi-analyst mode)</td></tr>
+  <tr><td><code>-no-browser</code></td><td><code>false</code></td><td>Don't auto-open the browser on startup</td></tr>
+  <tr><td><code>-version</code></td><td>—</td><td>Show version and exit</td></tr>
+</table>
+
+<!-- ============================== 11. CONFIG ============================== -->
+<h2>11. Configuration File</h2>
+<p>
+  Settings can be persisted instead of typed on every run. Location:
+  <code>~/.evidence-upload.conf</code> on Linux/macOS,
+  <code>%USERPROFILE%\.evidence-upload.conf</code> on Windows.
+</p>
+<p><strong>Priority:</strong> command-line flags &gt; environment variables &gt; config file &gt; defaults.</p>
+<pre><span class="c"># ~/.evidence-upload.conf</span>
+STORAGE=/mnt/evidence/cases
+BACKUP=
+ADMIN_TOKEN=<span class="s">a-long-random-token-you-chosenya</span>
+ALERT_EMAIL=soc@example.com
+ALERT_WEBHOOK=https://hooks.slack.com/services/…
+TUNNEL=cloudflare
+CLOUDFLARE_DOMAIN=evidence.example.com</pre>
+<p class="small">After editing, protect the file: <code>chmod 600 ~/.evidence-upload.conf</code>.</p>
+
+<!-- ============================== 12. TUNNELS ============================== -->
+<h2 class="pb">12. Tunnels and Remote Access</h2>
+<p>
+  When uploaders are on the internet, a tunnel exposes the server without opening
+  firewall ports. Choose the provider with <code>-tunnel</code>.
+</p>
+<table>
+  <tr><th>Mode</th><th>Transport</th><th>Notes</th></tr>
+  <tr>
+    <td><code>-tunnel cloudflare</code></td><td><strong>HTTPS</strong></td>
+    <td>Recommended for internet exposure. Quick tunnels get a random
+    <code>trycloudflare.com</code> URL; token-based tunnels can use your own domain.
+    Interoperates well with Cloudflare Access.</td>
+  </tr>
+  <tr>
+    <td><code>-tunnel bore</code></td><td>Plain TCP</td>
+    <td>Zero configuration, but traffic (including the admin token) travels
+    unencrypted. Use only on trusted networks.</td>
+  </tr>
+  <tr>
+    <td><code>-tunnel external</code></td><td>Depends</td>
+    <td>For multi-analyst setups: provide the public URL with
+    <code>-tunnel-url</code> when something else already exposes the server.</td>
+  </tr>
+</table>
+<div class="callout">
+  <strong>Exposure changes the threat model.</strong>
+  Anything reachable from the internet gets probed — usually within minutes.
+  The admin token is mandatory precisely because of this; see §13. Prefer
+  Cloudflare Tunnel (HTTPS) and consider putting Cloudflare Access in front of
+  the admin panel for SSO.
+</div>
+
+<!-- ============================== 13. SECURITY ============================== -->
+<h2>13. Security Model</h2>
+<table>
+  <tr><th>Control</th><th>How it works</th></tr>
+  <tr>
+    <td><strong>Admin token</strong></td>
+    <td>Every <code>/admin/api/*</code> endpoint requires it
+    (<code>X-Admin-Token</code> or <code>Authorization: Bearer</code>). Auto-generated
+    at startup, printed once per run; the panel prompts and remembers it for the
+    browser session. Compared in constant time.</td>
+  </tr>
+  <tr>
+    <td><strong>Session credentials</strong></td>
+    <td>Uploads require the session's HMAC token <em>and</em> secret — both are
+    128-bit random values. Secrets are never included in the session list API.</td>
+  </tr>
+  <tr>
+    <td><strong>IP binding</strong></td>
+    <td>First access locks the session to the uploader's IP; mismatches are
+    rejected and alerted.</td>
+  </tr>
+  <tr>
+    <td><strong>Integrity</strong></td>
+    <td>SHA-256 computed server-side per file, written as <code>.sha256</code>
+    sidecars; the CoC PDF itself is hashed too.</td>
+  </tr>
+  <tr>
+    <td><strong>Audit trail</strong></td>
+    <td>Every action recorded with timestamp and source IP; reflected in the CoC
+    PDF and the alert log.</td>
+  </tr>
+  <tr>
+    <td><strong>Alerts</strong></td>
+    <td>Desktop, email, webhook, and log-file notifications for uploads and
+    access anomalies.</td>
+  </tr>
+</table>
+<div class="callout">
+  <strong>Known limitations</strong>
+  Upload and triage download links are bearer URLs — anyone holding the link has
+  that capability. The service itself serves plain HTTP by default; use a
+  TLS-terminating tunnel (Cloudflare) or a reverse proxy for transport security.
+</div>
+
+<!-- ============================== 14. TROUBLESHOOTING ============================== -->
+<h2 class="pb">14. Troubleshooting</h2>
+<table>
+  <tr><th>Symptom</th><th>Cause and fix</th></tr>
+  <tr>
+    <td><code>zsh: permission denied</code></td>
+    <td>The binary lost its executable bit in download. Use the <code>.tar.gz</code>
+    release archive, or run <code>chmod +x</code> on a bare binary.</td>
+  </tr>
+  <tr>
+    <td>macOS: "cannot be opened because the developer cannot be verified"</td>
+    <td>Gatekeeper quarantine on downloaded binaries. Right-click → <strong>Open</strong>
+    → <strong>Open</strong>, or clear with
+    <code>xattr -d com.apple.quarantine &lt;file&gt;</code>.</td>
+  </tr>
+  <tr>
+    <td>"Failed to revoke session: Could not reach the server"</td>
+    <td>The browser lost the server (process stopped, tunnel dropped). Check the
+    server terminal, restart if needed, and retry.</td>
+  </tr>
+  <tr>
+    <td>"Server error (HTTP 401): invalid or missing admin token"</td>
+    <td>The admin token is wrong or expired for this browser session. Reload the
+    panel and enter the token printed at server startup.</td>
+  </tr>
+  <tr>
+    <td>Session rejects the uploader</td>
+    <td>IP binding: the session was first accessed from a different address. Create
+    a new session if the change is legitimate.</td>
+  </tr>
+  <tr>
+    <td>Admin panel shows unexpected sessions</td>
+    <td>If the server is internet-exposed, external scanners may create sessions
+    through old, unauthenticated versions. Update to v2.2.2 or later, revoke
+    unknown sessions, and check the activity history for source IPs.</td>
+  </tr>
+  <tr>
+    <td>CoC PDF missing after revoke</td>
+    <td>Check the server terminal for the error. Very long descriptions are
+    truncated safely since v2.2.2; regenerate by revoking again or from expiry.</td>
+  </tr>
+  <tr>
+    <td>Garbled characters in old CoC PDFs</td>
+    <td>Fixed in v2.2.3 (embedded Unicode fonts). Documents generated by older
+    versions remain valid; their text layer used Latin-1 fonts.</td>
+  </tr>
+</table>
+
+<!-- ============================== 15. DOWNLOADS & LICENSES ============================== -->
+<h2>15. Verifying Downloads and Licenses</h2>
+<p>
+  Each release ships a <code>SHA256SUMS</code> file. Verify your download:
+</p>
+<pre>$ shasum -a 256 -c SHA256SUMS        <span class="c"># macOS</span>
+$ sha256sum -c SHA256SUMS            <span class="c"># Linux</span></pre>
+<h3>Licenses</h3>
+<ul>
+  <li><strong>Evidence Upload</strong> — MIT License (see <code>LICENSE</code> in the repository)</li>
+  <li><strong>DejaVu fonts</strong> (embedded in the CoC generator) — Bitstream Vera / DejaVu license; the full text ships in <code>internal/custody/fonts/LICENSE-DejaVu.txt</code></li>
+</ul>
+<p class="small" style="margin-top:22px">
+  Evidence Upload v2.2.3 — User Manual · Generated 2026-11-05 ·
+  Interfaces shown are from the v2.2.x series.
+</p>
+
+</body>
+</html>

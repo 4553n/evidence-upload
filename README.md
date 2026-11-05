@@ -2,6 +2,13 @@
 
 A secure forensic evidence data upload web application with session-based authentication, IP binding, activity tracking, and Chain of Custody PDF generation.
 
+## User Manual
+
+A illustrated user manual — installation, admin panel, uploader flow, Chain of
+Custody, tunnels, and troubleshooting — is available at
+[`docs/user-manual/Evidence-Upload-User-Manual-v2.2.3.pdf`](docs/user-manual/Evidence-Upload-User-Manual-v2.2.3.pdf)
+(HTML source and screenshots in the same directory).
+
 ## Features
 
 - **Secure Upload**: HMAC-signed session tokens with IP binding
