@@ -1,292 +1,264 @@
 package tunnel
 
 import (
-	"archive/tar"
-	"archive/zip"
-	"bufio"
-	"compress/gzip"
+	"encoding/json"
 	"fmt"
 	"io"
-	"net/http"
-	"os"
-	"os/exec"
-	"path/filepath"
-	"regexp"
-	"runtime"
-	"strings"
+	"net"
+	"sync"
 	"time"
 )
 
+// Native implementation of the bore tunnel protocol
+// (https://github.com/ekzhang/bore). Messages are null-delimited JSON frames of
+// at most 256 bytes over TCP; per-connection data streams are raw pipes after
+// an Accept handshake. The client runs in-process: nothing is downloaded,
+// dropped to disk, or executed at runtime — the application stays a single
+// binary, which also avoids antivirus dropper heuristics.
+//
+// Wire format (serde external tagging, JSON, NUL-terminated):
+//
+//	client -> server  {"Hello":0}          request random public port
+//	server -> client  {"Hello":41739}      public port assigned
+//	server -> client  {"Connection":"<uuid>"}   visitor arrived
+//	client -> server  {"Accept":"<uuid>"}  on a NEW connection, then raw bytes
+//	server -> client  "Heartbeat"          unit variant, bare JSON string
+//	server -> client  {"Error":"..."}      fatal
+//	server -> client  {"Challenge":"<uuid>"}    auth required (unsupported)
 const (
-	boreVersion = "v0.6.0"
-	boreBaseURL = "https://github.com/ekzhang/bore/releases/download/" + boreVersion
+	boreHost        = "bore.pub"
+	boreControlAddr = "bore.pub:7835"
+	boreMaxFrame    = 256
+	boreDialTimeout = 3 * time.Second
 )
 
 type BoreTunnel struct {
-	binaryPath string
-	process    *exec.Cmd
+	mu         sync.Mutex
+	conn       net.Conn
+	localPort  int
+	publicPort uint16
 	publicURL  string
+	stopCh     chan struct{}
+	wg         sync.WaitGroup
 }
 
-func NewBoreTunnel(binaryPath string) *BoreTunnel {
-	return &BoreTunnel{
-		binaryPath: binaryPath,
-	}
+func NewBoreTunnel() *BoreTunnel {
+	return &BoreTunnel{stopCh: make(chan struct{})}
 }
 
-func (b *BoreTunnel) IsInstalled() bool {
-	if b.binaryPath != "" {
-		_, err := os.Stat(b.binaryPath)
-		return err == nil
-	}
-
-	_, err := exec.LookPath("bore")
-	if err == nil {
-		b.binaryPath = "bore"
-		return true
-	}
-
-	localPath := filepath.Join(".", "bore")
-	if runtime.GOOS == "windows" {
-		localPath += ".exe"
-	}
-	if _, err := os.Stat(localPath); err == nil {
-		b.binaryPath = localPath
-		return true
-	}
-
-	return false
-}
-
-func (b *BoreTunnel) Install(workDir string) error {
-	fmt.Println("bore not found. Installing...")
-
-	archiveName, err := getArchiveName()
-	if err != nil {
-		return fmt.Errorf("unsupported platform: %w", err)
-	}
-
-	url := boreBaseURL + "/" + archiveName
-	downloadPath := filepath.Join(workDir, archiveName)
-
-	fmt.Printf("Downloading bore %s from %s\n", boreVersion, url)
-	if err := downloadFile(url, downloadPath); err != nil {
-		return fmt.Errorf("failed to download bore: %w", err)
-	}
-
-	binaryName := "bore"
-	if runtime.GOOS == "windows" {
-		binaryName = "bore.exe"
-	}
-	binaryPath := filepath.Join(workDir, binaryName)
-
-	if err := extractArchive(downloadPath, binaryPath); err != nil {
-		os.Remove(downloadPath)
-		return fmt.Errorf("failed to extract bore: %w", err)
-	}
-
-	os.Remove(downloadPath)
-
-	if runtime.GOOS != "windows" {
-		os.Chmod(binaryPath, 0755)
-	}
-
-	b.binaryPath = binaryPath
-	fmt.Printf("bore installed to %s\n", binaryPath)
-	return nil
-}
-
+// Start opens the control connection and requests a random public port.
+// Returns the public URL (http scheme — pair with TLS for encryption).
 func (b *BoreTunnel) Start(localPort int) (string, error) {
-	if b.binaryPath == "" {
-		return "", fmt.Errorf("bore binary not found")
-	}
-
-	absPath, err := filepath.Abs(b.binaryPath)
+	conn, err := net.DialTimeout("tcp", boreControlAddr, boreDialTimeout)
 	if err != nil {
-		absPath = b.binaryPath
+		return "", fmt.Errorf("connect to %s: %w", boreControlAddr, err)
 	}
 
-	b.process = exec.Command(absPath, "local", fmt.Sprintf("%d", localPort), "--to", "bore.pub")
+	conn.SetDeadline(time.Now().Add(boreDialTimeout))
+	defer conn.SetDeadline(time.Time{})
 
-	stdout, err := b.process.StdoutPipe()
+	if err := writeFrame(conn, map[string]any{"Hello": 0}); err != nil {
+		conn.Close()
+		return "", fmt.Errorf("send hello: %w", err)
+	}
+	frame, err := readFrame(conn)
 	if err != nil {
-		return "", fmt.Errorf("failed to create stdout pipe: %w", err)
+		conn.Close()
+		return "", fmt.Errorf("read hello: %w", err)
 	}
-	b.process.Stderr = os.Stderr
-
-	if err := b.process.Start(); err != nil {
-		return "", fmt.Errorf("failed to start bore: %w", err)
+	msg, err := parseServerMessage(frame)
+	if err != nil {
+		conn.Close()
+		return "", err
+	}
+	switch msg.Kind {
+	case "Hello":
+		// ok
+	case "Challenge":
+		conn.Close()
+		return "", fmt.Errorf("bore server requires authentication, which is not supported")
+	case "Error":
+		conn.Close()
+		return "", fmt.Errorf("bore server error: %s", msg.Text)
+	default:
+		conn.Close()
+		return "", fmt.Errorf("unexpected initial message %q", msg.Kind)
 	}
 
-	publicPort := b.parseBoreOutput(stdout)
-	if publicPort == 0 {
-		time.Sleep(3 * time.Second)
-		publicPort = localPort
-	}
+	b.mu.Lock()
+	b.conn = conn
+	b.localPort = localPort
+	b.publicPort = msg.Port
+	b.publicURL = fmt.Sprintf("http://%s:%d", boreHost, msg.Port)
+	b.mu.Unlock()
 
-	publicURL := fmt.Sprintf("http://bore.pub:%d", publicPort)
-	b.publicURL = publicURL
+	fmt.Printf("Tunnel established: %s:%d -> localhost:%d\n", boreHost, msg.Port, localPort)
 
-	fmt.Printf("Tunnel established: bore.pub:%d -> localhost:%d\n", publicPort, localPort)
-	return publicURL, nil
+	b.wg.Add(1)
+	go b.listen()
+	return b.publicURL, nil
 }
 
-func (b *BoreTunnel) parseBoreOutput(stdout io.ReadCloser) int {
-	scanner := bufio.NewScanner(stdout)
-	re := regexp.MustCompile(`bore\.pub:(\d+)`)
-
-	for scanner.Scan() {
-		line := scanner.Text()
-		fmt.Println(line)
-
-		matches := re.FindStringSubmatch(line)
-		if len(matches) > 1 {
-			var port int
-			fmt.Sscanf(matches[1], "%d", &port)
-			return port
+// listen dispatches incoming visitor connections from the control stream.
+func (b *BoreTunnel) listen() {
+	defer b.wg.Done()
+	for {
+		frame, err := readFrame(b.conn)
+		if err != nil {
+			select {
+			case <-b.stopCh:
+			default:
+				fmt.Printf("Tunnel connection closed: %v\n", err)
+			}
+			return
+		}
+		msg, err := parseServerMessage(frame)
+		if err != nil {
+			continue
+		}
+		switch msg.Kind {
+		case "Connection":
+			b.wg.Add(1)
+			go func(id string) {
+				defer b.wg.Done()
+				b.handleConnection(id)
+			}(msg.ID)
+		case "Error":
+			fmt.Printf("Tunnel server error: %s\n", msg.Text)
+		case "Heartbeat", "Hello", "Challenge":
+			// ignored, matching the reference client
 		}
 	}
-	return 0
 }
 
-func (b *BoreTunnel) Stop() {
-	if b.process != nil && b.process.Process != nil {
-		b.process.Process.Kill()
-		b.process.Wait()
-		b.process = nil
+// handleConnection proxies one visitor: open a fresh server stream, accept the
+// connection by UUID, then pipe raw bytes between the visitor and the local port.
+func (b *BoreTunnel) handleConnection(id string) {
+	remote, err := net.DialTimeout("tcp", boreControlAddr, boreDialTimeout)
+	if err != nil {
+		fmt.Printf("Tunnel: failed to open data stream: %v\n", err)
+		return
 	}
+	defer remote.Close()
+
+	if err := writeFrame(remote, map[string]any{"Accept": id}); err != nil {
+		return
+	}
+
+	local, err := net.DialTimeout("tcp", fmt.Sprintf("127.0.0.1:%d", b.localPort), boreDialTimeout)
+	if err != nil {
+		fmt.Printf("Tunnel: failed to reach local port %d: %v\n", b.localPort, err)
+		return
+	}
+	defer local.Close()
+
+	done := make(chan struct{}, 2)
+	go func() {
+		io.Copy(remote, local)
+		closeWrite(remote)
+		done <- struct{}{}
+	}()
+	go func() {
+		io.Copy(local, remote)
+		closeWrite(local)
+		done <- struct{}{}
+	}()
+	<-done
+	<-done
+}
+
+// Stop closes the control connection and waits for connection handlers.
+func (b *BoreTunnel) Stop() {
+	close(b.stopCh)
+	b.mu.Lock()
+	if b.conn != nil {
+		b.conn.Close()
+	}
+	b.mu.Unlock()
+	b.wg.Wait()
 }
 
 func (b *BoreTunnel) PublicURL() string {
+	b.mu.Lock()
+	defer b.mu.Unlock()
 	return b.publicURL
 }
 
-func getArchiveName() (string, error) {
-	goos := runtime.GOOS
-	goarch := runtime.GOARCH
-
-	switch goos {
-	case "linux":
-		switch goarch {
-		case "amd64":
-			return "bore-" + boreVersion + "-x86_64-unknown-linux-musl.tar.gz", nil
-		case "arm64":
-			return "bore-" + boreVersion + "-aarch64-unknown-linux-musl.tar.gz", nil
-		case "arm":
-			return "bore-" + boreVersion + "-arm-unknown-linux-musleabi.tar.gz", nil
-		}
-	case "windows":
-		switch goarch {
-		case "amd64":
-			return "bore-" + boreVersion + "-x86_64-pc-windows-msvc.zip", nil
-		case "386":
-			return "bore-" + boreVersion + "-i686-pc-windows-msvc.zip", nil
-		}
-	case "darwin":
-		switch goarch {
-		case "amd64":
-			return "bore-" + boreVersion + "-x86_64-apple-darwin.tar.gz", nil
-		case "arm64":
-			return "bore-" + boreVersion + "-aarch64-apple-darwin.tar.gz", nil
-		}
+func closeWrite(c net.Conn) {
+	if tc, ok := c.(*net.TCPConn); ok {
+		tc.CloseWrite()
 	}
-
-	return "", fmt.Errorf("no bore binary available for %s/%s", goos, goarch)
 }
 
-func downloadFile(url, dest string) error {
-	resp, err := http.Get(url)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("download failed with status %d", resp.StatusCode)
-	}
-
-	out, err := os.Create(dest)
-	if err != nil {
-		return err
-	}
-	defer out.Close()
-
-	_, err = io.Copy(out, resp.Body)
-	return err
+// serverMessage is a decoded ServerMessage frame.
+type serverMessage struct {
+	Kind string // Hello | Connection | Challenge | Heartbeat | Error
+	Port uint16 // Hello
+	ID   string // Connection / Challenge
+	Text string // Error
 }
 
-func extractArchive(archivePath, destPath string) error {
-	if strings.HasSuffix(archivePath, ".tar.gz") {
-		return extractTarGz(archivePath, destPath)
-	} else if strings.HasSuffix(archivePath, ".zip") {
-		return extractZip(archivePath, destPath)
+func parseServerMessage(frame []byte) (serverMessage, error) {
+	// Unit variants serialize as a bare JSON string ("Heartbeat").
+	var unit string
+	if err := json.Unmarshal(frame, &unit); err == nil {
+		return serverMessage{Kind: unit}, nil
 	}
-	return fmt.Errorf("unsupported archive format")
+	var obj map[string]json.RawMessage
+	if err := json.Unmarshal(frame, &obj); err != nil {
+		return serverMessage{}, fmt.Errorf("invalid frame %q", frame)
+	}
+	for kind, raw := range obj {
+		switch kind {
+		case "Hello":
+			var p uint16
+			if err := json.Unmarshal(raw, &p); err != nil {
+				return serverMessage{}, fmt.Errorf("invalid hello %q", frame)
+			}
+			return serverMessage{Kind: "Hello", Port: p}, nil
+		case "Connection", "Challenge":
+			var id string
+			if err := json.Unmarshal(raw, &id); err != nil {
+				return serverMessage{}, fmt.Errorf("invalid %s %q", kind, frame)
+			}
+			return serverMessage{Kind: kind, ID: id}, nil
+		case "Error":
+			var t string
+			json.Unmarshal(raw, &t)
+			return serverMessage{Kind: "Error", Text: t}, nil
+		}
+	}
+	return serverMessage{}, fmt.Errorf("unknown message %q", frame)
 }
 
-func extractTarGz(archivePath, destPath string) error {
-	f, err := os.Open(archivePath)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-
-	gz, err := gzip.NewReader(f)
-	if err != nil {
-		return err
-	}
-	defer gz.Close()
-
-	tr := tar.NewReader(gz)
+// readFrame reads one NUL-terminated frame. It reads byte by byte so that no
+// payload bytes beyond the terminator are consumed — critical on Accept
+// streams, where proxied bytes follow the handshake immediately.
+func readFrame(r io.Reader) ([]byte, error) {
+	buf := make([]byte, 0, 32)
+	var b [1]byte
 	for {
-		header, err := tr.Next()
-		if err == io.EOF {
-			break
+		if _, err := io.ReadFull(r, b[:]); err != nil {
+			return nil, err
 		}
-		if err != nil {
-			return err
+		if b[0] == 0 {
+			return buf, nil
 		}
-
-		name := filepath.Base(header.Name)
-		if name == "bore" || name == "bore.exe" {
-			out, err := os.Create(destPath)
-			if err != nil {
-				return err
-			}
-			defer out.Close()
-
-			_, err = io.Copy(out, tr)
-			return err
+		buf = append(buf, b[0])
+		if len(buf) > boreMaxFrame {
+			return nil, fmt.Errorf("frame exceeds %d bytes", boreMaxFrame)
 		}
 	}
-	return fmt.Errorf("bore binary not found in archive")
 }
 
-func extractZip(archivePath, destPath string) error {
-	r, err := zip.OpenReader(archivePath)
+func writeFrame(w io.Writer, v any) error {
+	data, err := json.Marshal(v)
 	if err != nil {
 		return err
 	}
-	defer r.Close()
-
-	for _, f := range r.File {
-		name := filepath.Base(f.Name)
-		if name == "bore" || name == "bore.exe" {
-			out, err := os.Create(destPath)
-			if err != nil {
-				return err
-			}
-			defer out.Close()
-
-			rc, err := f.Open()
-			if err != nil {
-				return err
-			}
-			defer rc.Close()
-
-			_, err = io.Copy(out, rc)
-			return err
-		}
+	if len(data)+1 > boreMaxFrame {
+		return fmt.Errorf("frame exceeds %d bytes", boreMaxFrame)
 	}
-	return fmt.Errorf("bore binary not found in archive")
+	_, err = w.Write(append(data, 0))
+	return err
 }

@@ -91,13 +91,7 @@ func main() {
 	var cloudflareTunnel *tunnel.CloudflareTunnel
 
 	if cfg.Tunnel == "bore" {
-		boreTunnel = tunnel.NewBoreTunnel(cfg.BorePath)
-
-		if !boreTunnel.IsInstalled() {
-			if err := boreTunnel.Install("."); err != nil {
-				log.Fatalf("Failed to install bore: %v", err)
-			}
-		}
+		boreTunnel = tunnel.NewBoreTunnel()
 
 		publicURL, err := boreTunnel.Start(cfg.Port)
 		if err != nil {

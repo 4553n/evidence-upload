@@ -60,7 +60,7 @@ func Load() *Config {
 	flag.StringVar(&cfg.ExternalIP, "external-ip", getEnvOrConfig(configFile, "EXTERNAL_IP", ""), "External/public IP for internet access (auto-detected if empty)")
 	flag.StringVar(&cfg.BaseURL, "base-url", getEnvOrConfig(configFile, "BASE_URL", ""), "Base URL for generated links (e.g., https://myhost:8443)")
 	flag.StringVar(&cfg.Tunnel, "tunnel", getEnvOrConfig(configFile, "TUNNEL", "bore"), "Tunnel provider: 'bore', 'cloudflare', or 'external' (empty value disables the tunnel)")
-	flag.StringVar(&cfg.BorePath, "bore-path", getEnvOrConfig(configFile, "BORE_PATH", ""), "Path to bore binary (auto-detected if empty)")
+	flag.StringVar(&cfg.BorePath, "bore-path", "", "Deprecated: the bore tunnel client is built in; this flag is ignored")
 	flag.StringVar(&cfg.CloudflarePath, "cloudflare-path", getEnvOrConfig(configFile, "CLOUDFLARE_PATH", ""), "Path to cloudflared binary (auto-detected if empty)")
 	flag.StringVar(&cfg.CloudflareDomain, "cloudflare-domain", getEnvOrConfig(configFile, "CLOUDFLARE_DOMAIN", ""), "Custom domain for Cloudflare tunnel (e.g., yourdomain.com)")
 	flag.StringVar(&cfg.CloudflareToken, "cloudflare-token", getEnvOrConfig(configFile, "CLOUDFLARE_TOKEN", ""), "Cloudflare tunnel token (from dashboard)")

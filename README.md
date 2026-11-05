@@ -6,7 +6,7 @@ A secure forensic evidence data upload web application with session-based authen
 
 An illustrated user manual — installation, admin panel, uploader flow, Chain of
 Custody, tunnels, HTTPS, and troubleshooting — is available at
-[`docs/user-manual/Evidence-Upload-User-Manual-v2.2.5.pdf`](docs/user-manual/Evidence-Upload-User-Manual-v2.2.5.pdf)
+[`docs/user-manual/Evidence-Upload-User-Manual-v2.2.6.pdf`](docs/user-manual/Evidence-Upload-User-Manual-v2.2.6.pdf)
 (HTML source and screenshots in the same directory).
 
 ## Features
@@ -109,7 +109,7 @@ go build -o evidence-upload.exe .
 | `-external-ip` | auto-detected | External/public IP for internet access |
 | `-base-url` | auto-detected | Base URL for generated links |
 | `-tunnel` | `bore` | Tunnel provider: `bore`, `cloudflare`, or `external` (empty value disables) |
-| `-bore-path` | auto-detected | Path to bore binary |
+| `-bore-path` | — | Deprecated: the bore tunnel client is built in, flag ignored |
 | `-cloudflare-path` | auto-detected | Path to cloudflared binary |
 | `-cloudflare-domain` | `""` | Custom domain for Cloudflare tunnel (e.g., yourdomain.com) |
 | `-cloudflare-token` | `""` | Cloudflare tunnel token (from dashboard) |
@@ -334,6 +334,8 @@ For internet access without router configuration:
 ```
 
 The bore tunnel creates a public URL via `bore.pub` that forwards to your local server.
+The tunnel client is **built into the application** — nothing is downloaded or
+installed at startup; the single executable speaks the tunnel protocol itself.
 
 **Note:** bore.pub domains may be blocked by corporate proxies. Consider Cloudflare Tunnel for trusted domain access.
 

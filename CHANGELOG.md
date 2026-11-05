@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.2.6] - 2026-11-05
+
+### Changed
+- **Bore tunnel client is now built in** - The tunnel protocol (null-delimited JSON control frames + raw TCP data streams) is implemented natively in Go; the external `bore` binary is no longer downloaded at runtime
+  - Single binary: nothing is fetched, dropped to disk, or executed as a child process at startup — the runtime download-and-execute pattern that antivirus heuristics (e.g. Windows Defender) flag as dropper behavior is gone
+  - Instant tunnel startup (no download/extract step)
+  - Verified end-to-end against the live bore.pub service, including TLS through the tunnel
+  - `-bore-path` is now deprecated and ignored (kept so existing scripts don't break)
+
 ## [2.2.5] - 2026-11-05
 
 ### Changed

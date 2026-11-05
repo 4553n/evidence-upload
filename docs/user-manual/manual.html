@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Evidence Upload — User Manual v2.2.5</title>
+<title>Evidence Upload — User Manual v2.2.6</title>
 <style>
   @page { size: A4; margin: 0; }
   :root {
@@ -146,7 +146,7 @@
   <h1>Evidence Upload</h1>
   <div class="sub">User Manual</div>
   <div class="meta">
-    <strong>Version 2.2.5</strong><br>
+    <strong>Version 2.2.6</strong><br>
     November 2026<br><br>
     Secure forensic evidence collection, upload sessions,<br>
     and Chain of Custody documentation
@@ -207,8 +207,8 @@
   further steps are needed:
 </p>
 <pre><span class="c"># macOS (Apple Silicon)</span>
-curl -LO https://github.com/4553n/evidence-upload/releases/download/v2.2.5/evidence-upload-v2.2.5-macos-arm64.tar.gz
-tar -xzf evidence-upload-v2.2.5-macos-arm64.tar.gz
+curl -LO https://github.com/4553n/evidence-upload/releases/download/v2.2.6/evidence-upload-v2.2.6-macos-arm64.tar.gz
+tar -xzf evidence-upload-v2.2.6-macos-arm64.tar.gz
 
 <span class="c"># macOS (Intel) — use the -macos-amd64 archive</span>
 <span class="c"># Linux — use the -linux-amd64 archive</span>
@@ -228,16 +228,13 @@ tar -xzf evidence-upload-v2.2.5-macos-arm64.tar.gz
   Start the server from a terminal. With no flags it listens on port <code>8443</code>,
   stores evidence in <code>./evidence</code>, and applies <strong>secure defaults</strong>:
   a public <code>bore</code> tunnel and HTTPS with an auto-generated self-signed
-  certificate. On first run the tunnel tool is fetched automatically:
+  certificate. The tunnel client is built into the application — nothing is
+  downloaded or installed:
 </p>
-<pre>$ ./evidence-upload-v2.2.5-macos-arm64
+<pre>$ ./evidence-upload-v2.2.6-macos-arm64
 Detected external IP: 203.0.113.44
-bore not found. Installing...
-Downloading bore v0.6.0 from https://github.com/ekzhang/bore/releases/download/…
-bore installed to bore
-INFO bore_cli::client: listening at bore.pub:41739
 Tunnel established: bore.pub:41739 -&gt; localhost:8443
-Evidence Upload Server v2.2.5 starting on :8443
+Evidence Upload Server v2.2.6 starting on :8443
 Storage: ./evidence
 Base URL: https://bore.pub:41739
 <span class="k">Admin token: 3f2a91c0e7b4d5a8c1e2f304b5d6a7c8</span>  <span class="c">(keep private; set via -admin-token or ADMIN_TOKEN)</span>
@@ -438,7 +435,7 @@ Opening admin interface...</pre>
   <tr><td><code>-external-ip</code></td><td>auto-detected</td><td>External/public IP for internet access</td></tr>
   <tr><td><code>-base-url</code></td><td>auto-detected</td><td>Base URL used in generated links</td></tr>
   <tr><td><code>-tunnel</code></td><td><code>bore</code></td><td>Tunnel provider: <code>bore</code>, <code>cloudflare</code>, or <code>external</code> (empty value disables)</td></tr>
-  <tr><td><code>-bore-path</code></td><td>auto-detected</td><td>Path to the bore binary</td></tr>
+  <tr><td><code>-bore-path</code></td><td>—</td><td>Deprecated: the bore tunnel client is built in, flag ignored</td></tr>
   <tr><td><code>-cloudflare-path</code></td><td>auto-detected</td><td>Path to the cloudflared binary</td></tr>
   <tr><td><code>-cloudflare-domain</code></td><td><code>""</code></td><td>Custom domain for the Cloudflare tunnel</td></tr>
   <tr><td><code>-cloudflare-token</code></td><td><code>""</code></td><td>Cloudflare tunnel token (from the dashboard)</td></tr>
@@ -483,8 +480,9 @@ CLOUDFLARE_DOMAIN=evidence.example.com</pre>
   </tr>
   <tr>
     <td><code>-tunnel bore</code></td><td>Plain TCP</td>
-    <td>Zero configuration, but bore does not encrypt traffic. Pair with
-    <code>-tls-selfsigned</code> (or <code>-tls-cert</code>/<code>-tls-key</code>) so
+    <td>Default. Zero configuration — the tunnel client is built into the
+    application (nothing downloaded or executed). bore does not encrypt traffic:
+    pair with <code>-tls-selfsigned</code> (or <code>-tls-cert</code>/<code>-tls-key</code>) so
     everything inside the tunnel is encrypted end-to-end.</td>
   </tr>
   <tr>
@@ -615,7 +613,7 @@ $ sha256sum -c SHA256SUMS            <span class="c"># Linux</span></pre>
   <li><strong>DejaVu fonts</strong> (embedded in the CoC generator) — Bitstream Vera / DejaVu license; the full text ships in <code>internal/custody/fonts/LICENSE-DejaVu.txt</code></li>
 </ul>
 <p class="small" style="margin-top:22px">
-  Evidence Upload v2.2.5 — User Manual · Generated 2026-11-05 ·
+  Evidence Upload v2.2.6 — User Manual · Generated 2026-11-05 ·
   Interfaces shown are from the v2.2.x series.
 </p>
 
