@@ -67,7 +67,7 @@ func TestGenerateCoCCodepointSweep(t *testing.T) {
 			Timestamp: time.Now(), Action: text, IP: text, UserAgent: text, Details: text,
 		}},
 	}
-	p, err := GenerateCoC(sess, text, t.TempDir(), "test")
+	p, err := GenerateCoC(sess, text, t.TempDir(), "test", nil, "", 0, 0)
 	if err != nil {
 		t.Fatalf("codepoint sweep failed: %v", err)
 	}

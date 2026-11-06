@@ -176,6 +176,56 @@ func (s *Storage) GetSessionDir(folderName string) string {
 	return filepath.Join(s.basePath, folderName)
 }
 
+// SaveCollectorPackage stores the collection tool package outside the evidence
+// folders (`.packages/<token>/`) and returns its sanitized name, size and
+// SHA-256, computed while streaming.
+func (s *Storage) SaveCollectorPackage(token, filename string, reader io.Reader) (string, int64, string, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	dir := filepath.Join(s.basePath, ".packages", token)
+	if err := os.MkdirAll(dir, 0700); err != nil {
+		return "", 0, "", err
+	}
+
+	name := SanitizeFilename(filename)
+	path := filepath.Join(dir, name)
+	outFile, err := os.Create(path)
+	if err != nil {
+		return "", 0, "", err
+	}
+	defer outFile.Close()
+
+	hasher := sha256.New()
+	written, err := io.Copy(io.MultiWriter(outFile, hasher), reader)
+	if err != nil {
+		os.Remove(path)
+		return "", 0, "", err
+	}
+	return name, written, hex.EncodeToString(hasher.Sum(nil)), nil
+}
+
+// CollectorPackagePath returns where a package for the session is stored.
+func (s *Storage) CollectorPackagePath(token, name string) string {
+	return filepath.Join(s.basePath, ".packages", token, filepath.Base(name))
+}
+
+// RemoveCollectorPackage deletes a stored package (and its empty directory).
+func (s *Storage) RemoveCollectorPackage(token, name string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	dir := filepath.Join(s.basePath, ".packages", token)
+	os.Remove(filepath.Join(dir, filepath.Base(name)))
+	os.Remove(dir) // only succeeds when empty
+}
+
+// RemoveSessionDir deletes a case folder entirely (used by the explicit
+// kill-and-delete action).
+func (s *Storage) RemoveSessionDir(folderName string) error {
+	return os.RemoveAll(s.GetSessionDir(folderName))
+}
+
 func (s *Storage) GetBackupSessionDir(folderName string) string {
 	if s.backupPath == "" {
 		return ""

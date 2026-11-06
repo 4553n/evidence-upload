@@ -6,7 +6,7 @@ A secure forensic evidence data upload web application with session-based authen
 
 An illustrated user manual — installation, admin panel, uploader flow, Chain of
 Custody, tunnels, HTTPS, and troubleshooting — is available at
-[`docs/user-manual/Evidence-Upload-User-Manual-v2.2.9.pdf`](docs/user-manual/Evidence-Upload-User-Manual-v2.2.9.pdf)
+[`docs/user-manual/Evidence-Upload-User-Manual-v2.3.0.pdf`](docs/user-manual/Evidence-Upload-User-Manual-v2.3.0.pdf)
 (HTML source and screenshots in the same directory).
 
 ## Features
@@ -14,10 +14,10 @@ Custody, tunnels, HTTPS, and troubleshooting — is available at
 - **Secure Upload**: HMAC-signed session tokens with IP binding
 - **Resumable Uploads**: Chunked upload support for large files (10GB+)
 - **Drag & Drop**: Modern upload interface with progress bars
-- **Session Management**: Create, monitor, and revoke upload sessions; links survive server restarts
+- **Session Management**: Create, monitor, and revoke upload sessions; links survive server restarts; kill failed sessions without a CoC ceremony
 - **Activity Tracking**: Full audit trail of all session activities
 - **Chain of Custody PDF**: Automatic forensic documentation on session revocation/expiration
-- **Triage Collection Package**: Upload and share triage packages with remote parties
+- **Triage Collection Package**: Hand the remote party a collection tool (KAPE/Binalyze) — attached per session, SHA-256 recorded, downloads gated behind IP documentation
 - **Short links**: Hand-typable upload and triage links (`/e/K7M3-Q9P2`) with rate limiting and alerts
 - **IP Detection**: Records both the server's and the uploader's IPs for forensic documentation
 - **Auto-open Browser**: Admin interface opens automatically on startup
@@ -248,9 +248,9 @@ The triage package feature allows analysts to share a collection tool with remot
 
 ```
 https://<host>:<port>/e/<short-code>          # upload page (short, hand-typeable)
-https://<host>:<port>/t/<short-code>          # triage package download (short)
+https://<host>:<port>/t/<short-code>          # collection package download (short)
 https://<host>:<port>/?token=…&secret=…       # upload page (full, still works)
-https://<host>:<port>/triage/<session-token>  # triage download (full, still works)
+https://<host>:<port>/triage/<session-token>  # collection package (full, still works)
 ```
 
 Short codes are 8 characters of unambiguous Crockford base32 (`K7M3-Q9P2`),

@@ -178,7 +178,9 @@ func main() {
 		for range ticker.C {
 			expired := sessions.CleanupExpired()
 			for _, s := range expired {
-				cocPath, err := custody.GenerateCoC(s, "System (expired)", cfg.StoragePath, Version)
+				// Expiry CoCs pick up the saved company logo when one exists.
+				logo, logoType, logoW, logoH := loadSavedLogo(cfg.StoragePath)
+				cocPath, err := custody.GenerateCoC(s, "System (expired)", cfg.StoragePath, Version, logo, logoType, logoW, logoH)
 				if err != nil {
 					log.Printf("Failed to generate CoC for expired session %s: %v", s.Token[:16], err)
 				} else {
@@ -217,4 +219,25 @@ func openBrowser(url string) {
 	if err := cmd.Start(); err != nil {
 		log.Printf("Failed to open browser: %v", err)
 	}
+}
+
+// loadSavedLogo reads the stored company logo used to brand CoCs.
+func loadSavedLogo(storagePath string) (data []byte, imgType string, w, h int) {
+	entries, err := os.ReadDir(filepath.Join(storagePath, ".branding"))
+	if err != nil {
+		return nil, "", 0, 0
+	}
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasPrefix(e.Name(), "logo.") {
+			continue
+		}
+		b, err := os.ReadFile(filepath.Join(storagePath, ".branding", e.Name()))
+		if err != nil {
+			continue
+		}
+		if t, pw, ph, ok := custody.PrepareLogo(b); ok {
+			return b, t, pw, ph
+		}
+	}
+	return nil, "", 0, 0
 }

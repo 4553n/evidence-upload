@@ -24,25 +24,51 @@ type ActivityEvent struct {
 }
 
 type Session struct {
-	Token          string           `json:"token"`
-	Secret         string           `json:"secret"`
-	ShortCode      string           `json:"short_code,omitempty"`
-	CreatedAt      time.Time        `json:"created_at"`
-	ExpiresAt      time.Time        `json:"expires_at"`
-	Description    string           `json:"description"`
-	FolderName     string           `json:"folder_name"`
-	UploaderIP     string           `json:"uploader_ip,omitempty"`
-	IsLocked       bool             `json:"is_locked"`
-	UploadedFiles  []UploadedFile   `json:"uploaded_files"`
-	TotalSize      int64            `json:"total_size"`
-	Activity       []ActivityEvent  `json:"activity"`
-	TriagePackage  string           `json:"triage_package,omitempty"`
+	Token            string           `json:"token"`
+	Secret           string           `json:"secret"`
+	ShortCode        string           `json:"short_code,omitempty"`
+	CreatedAt        time.Time        `json:"created_at"`
+	ExpiresAt        time.Time        `json:"expires_at"`
+	Description      string           `json:"description"`
+	FolderName       string           `json:"folder_name"`
+	UploaderIP       string           `json:"uploader_ip,omitempty"`
+	IsLocked         bool             `json:"is_locked"`
+	IPSharedAt       time.Time        `json:"ip_shared_at,omitempty"`
+	CollectorPackage *CollectorPackage `json:"collector_package,omitempty"`
+	UploadedFiles    []UploadedFile   `json:"uploaded_files"`
+	TotalSize        int64            `json:"total_size"`
+	Activity         []ActivityEvent  `json:"activity"`
+	TriagePackage    string           `json:"triage_package,omitempty"` // legacy, migrated to CollectorPackage
+}
+
+// IPShared reports whether the uploader completed the IP-info step; all
+// further remote-party activity is gated on it.
+func (s *Session) IPShared() bool {
+	return !s.IPSharedAt.IsZero()
 }
 
 type UploadedFile struct {
 	Name string `json:"name"`
 	Size int64  `json:"size"`
 	Hash string `json:"hash,omitempty"`
+}
+
+// CollectorPackage is the collection tool (e.g. KAPE / Binalyze archive)
+// handed to the remote party for download.
+type CollectorPackage struct {
+	Name       string    `json:"name"`
+	Size       int64     `json:"size"`
+	Hash       string    `json:"hash"`
+	Path       string    `json:"path,omitempty"` // stored copy (legacy packages may live in the case folder)
+	AttachedAt time.Time `json:"attached_at"`
+}
+
+// KillRecord documents why a session was killed without a Chain of Custody.
+type KillRecord struct {
+	At     time.Time `json:"at"`
+	Reason string    `json:"reason,omitempty"`
+	Note   string    `json:"note,omitempty"`
+	Purged bool      `json:"purged,omitempty"` // case folder was deleted
 }
 
 // snapshot returns a deep copy of the session, safe to JSON-encode while
@@ -53,6 +79,10 @@ func (s *Session) snapshot() *Session {
 	copy(cp.UploadedFiles, s.UploadedFiles)
 	cp.Activity = make([]ActivityEvent, len(s.Activity))
 	copy(cp.Activity, s.Activity)
+	if s.CollectorPackage != nil {
+		pkg := *s.CollectorPackage
+		cp.CollectorPackage = &pkg
+	}
 	return &cp
 }
 
@@ -64,7 +94,8 @@ func (s *Session) Clone() *Session {
 type SessionManager struct {
 	sessions     map[string]*Session
 	revoked      map[string]time.Time
-	revokedCodes map[string]string // short code -> token, kept after revocation
+	killed       map[string]KillRecord
+	revokedCodes map[string]string // short code -> token, kept after close
 	mu           sync.RWMutex
 	secret       []byte
 	persist      string // path of the state file; empty disables persistence
@@ -73,6 +104,7 @@ type SessionManager struct {
 type managerState struct {
 	Sessions     map[string]*Session  `json:"sessions"`
 	Revoked      map[string]time.Time `json:"revoked"`
+	Killed       map[string]KillRecord `json:"killed"`
 	RevokedCodes map[string]string    `json:"revoked_codes"`
 }
 
@@ -80,6 +112,7 @@ func NewSessionManager(secret string) *SessionManager {
 	return &SessionManager{
 		sessions:     make(map[string]*Session),
 		revoked:      make(map[string]time.Time),
+		killed:       make(map[string]KillRecord),
 		revokedCodes: make(map[string]string),
 		secret:       []byte(secret),
 	}
@@ -118,6 +151,11 @@ func (sm *SessionManager) Load() (int, error) {
 			sm.revoked[t] = at
 		}
 	}
+	if st.Killed != nil {
+		for t, rec := range st.Killed {
+			sm.killed[t] = rec
+		}
+	}
 	if st.RevokedCodes != nil {
 		for c, t := range st.RevokedCodes {
 			sm.revokedCodes[c] = t
@@ -134,6 +172,19 @@ func (sm *SessionManager) Load() (int, error) {
 				return restored, err
 			}
 			s.ShortCode = code
+		}
+		// Legacy triage packages become collector packages.
+		if s.CollectorPackage == nil && s.TriagePackage != "" {
+			s.CollectorPackage = &CollectorPackage{Name: s.TriagePackage}
+		}
+		// Sessions that already received an IP report predate the IP gate.
+		if !s.IPShared() {
+			for _, a := range s.Activity {
+				if strings.Contains(a.Details, "ip_detection") {
+					s.IPSharedAt = a.Timestamp
+					break
+				}
+			}
 		}
 		sm.sessions[token] = s
 		restored++
@@ -200,7 +251,7 @@ func (sm *SessionManager) saveLocked() {
 	if sm.persist == "" {
 		return
 	}
-	st := managerState{Sessions: sm.sessions, Revoked: sm.revoked, RevokedCodes: sm.revokedCodes}
+	st := managerState{Sessions: sm.sessions, Revoked: sm.revoked, Killed: sm.killed, RevokedCodes: sm.revokedCodes}
 	data, err := json.MarshalIndent(st, "", " ")
 	if err != nil {
 		log.Printf("Failed to serialize session state: %v", err)
@@ -422,7 +473,87 @@ func (sm *SessionManager) SessionProblem(token string) string {
 	if _, ok := sm.revoked[token]; ok {
 		return "revoked"
 	}
+	if _, ok := sm.killed[token]; ok {
+		return "revoked" // same external message; the tombstone keeps the reason
+	}
 	return "unknown"
+}
+
+// MarkIPShared records the uploader's IP documentation and locks the session
+// to that external identity. All further remote-party activity is gated on it.
+func (sm *SessionManager) MarkIPShared(token, externalIP string) bool {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+
+	session, ok := sm.sessions[token]
+	if !ok {
+		return false
+	}
+	session.IPSharedAt = time.Now()
+	if externalIP != "" {
+		session.UploaderIP = externalIP
+		session.IsLocked = true
+	}
+	sm.saveLocked()
+	return true
+}
+
+// SetCollectorPackage attaches (or replaces) the session's collector package.
+func (sm *SessionManager) SetCollectorPackage(token string, pkg CollectorPackage) bool {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+
+	session, ok := sm.sessions[token]
+	if !ok {
+		return false
+	}
+	pkg.AttachedAt = time.Now()
+	session.CollectorPackage = &pkg
+	sm.saveLocked()
+	return true
+}
+
+// ClearCollectorPackage detaches the package reference (file removal is the
+// caller's responsibility).
+func (sm *SessionManager) ClearCollectorPackage(token string) bool {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+
+	session, ok := sm.sessions[token]
+	if !ok {
+		return false
+	}
+	session.CollectorPackage = nil
+	sm.saveLocked()
+	return true
+}
+
+// KillSession closes a failed or never-established session without generating
+// a Chain of Custody. The tombstone records why; purged marks that the case
+// folder was deleted. The short code is retired and never reused.
+func (sm *SessionManager) KillSession(token, reason, note string, purged bool) (*Session, bool) {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+
+	session, ok := sm.sessions[token]
+	if !ok {
+		return nil, false
+	}
+	delete(sm.sessions, token)
+	sm.killed[token] = KillRecord{At: time.Now(), Reason: reason, Note: note, Purged: purged}
+	if session.ShortCode != "" {
+		sm.revokedCodes[session.ShortCode] = token
+	}
+	sm.saveLocked()
+	return session, true
+}
+
+// KillRecordFor returns the tombstone of a killed session, if any.
+func (sm *SessionManager) KillRecordFor(token string) (KillRecord, bool) {
+	sm.mu.RLock()
+	defer sm.mu.RUnlock()
+	rec, ok := sm.killed[token]
+	return rec, ok
 }
 
 func (sm *SessionManager) SetTriagePackage(token, filename string) {

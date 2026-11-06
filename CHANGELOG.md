@@ -2,6 +2,22 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.3.0] - 2026-11-06
+
+### Added
+- **Collection packages (redesigned triage hand-over)** - Attach the collection tool (zipped KAPE, Binalyze collector, …) per session at creation or later (Attach/Replace/Remove with upload progress); stored outside the case folder with its SHA-256 recorded in the session, activity log and CoC
+  - The uploader gets it on the page (Step 2, after the IP info) with name/size/SHA-256 + copy, or directly via `/t/<CODE>`; downloads are logged (file, hash, IP, time) and appear in the CoC timeline
+  - The old triage upload path was dead on arrival (a validation bug rejected every upload) and is replaced entirely; legacy `triage_package` state migrates automatically
+- **IP gate and external-IP identity** - Nothing (downloads or uploads) is possible before the uploader sends their IP info (`POST /api/ip-info`), which stores the report and locks the session to the uploader's **external** IP at that moment
+  - Identity precedence: `CF-Connecting-IP` → rightmost public `X-Forwarded-For` hop → WebRTC STUN assertion (tunnels that hide the client, e.g. bore) → non-loopback TCP peer; **loopback/private addresses are never recorded or displayed**
+  - Every gated request re-verifies the caller against the locked identity (403 + security alert on mismatch; re-locking to another address is refused)
+- **Kill session** - For failed or never-established sessions: link and short code die immediately, no CoC is generated, a persisted tombstone records the reason (quick-pick + note) and whether the case folder was deleted (explicit opt-in checkbox); the panel warns when evidence exists
+- **CoC company logo branding** - The revoke dialog offers a PNG/JPEG logo (none / saved logo / choose), embedded in the CoC header top-right; the saved logo is reused automatically for expiry-generated CoCs; a corrupt logo never blocks revocation (unbranded CoC + warning)
+- **CoC page numbering and anti-tamper** - Every page footers "Page N of M" plus case/token identity; the Integrity section states the document page count beside the PDF SHA-256 sidecar; the certification block is kept entirely on one page
+
+### Changed
+- **User manual v2.3.0** - 2 cm header band (title + version + rule; body text cannot cross it), 9 figures (kill dialog, unlocked package card, branded CoC), Revoke-or-Kill guidance; `scripts/check_margins.py` verifies both page borders from now on
+
 ## [2.2.9] - 2026-11-05
 
 ### Fixed

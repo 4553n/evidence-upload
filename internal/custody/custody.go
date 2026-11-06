@@ -1,9 +1,13 @@
 package custody
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"image"
+	_ "image/jpeg"
+	_ "image/png"
 	"os"
 	"path/filepath"
 	"strings"
@@ -28,7 +32,27 @@ const (
 // cleanup can otherwise write the same PDF concurrently and corrupt it.
 var cocMu sync.Mutex
 
-func GenerateCoC(session *models.Session, analystName, storagePath, version string) (string, error) {
+// PrepareLogo validates branding logo bytes (PNG or JPEG only) and returns the
+// pixel dimensions and the gofpdf image type.
+func PrepareLogo(logo []byte) (imgType string, w, h int, ok bool) {
+	cfg, format, err := image.DecodeConfig(bytes.NewReader(logo))
+	if err != nil || cfg.Width == 0 || cfg.Height == 0 {
+		return "", 0, 0, false
+	}
+	switch format {
+	case "png":
+		return "PNG", cfg.Width, cfg.Height, true
+	case "jpeg":
+		return "JPEG", cfg.Width, cfg.Height, true
+	}
+	return "", 0, 0, false
+}
+
+// GenerateCoC writes the Chain of Custody PDF for a session. logo/logoType may
+// be empty (unbranded); a non-empty logo must have been validated with
+// PrepareLogo. Every page carries "Page N of M" and per-page identity so page
+// removal or substitution is detectable.
+func GenerateCoC(session *models.Session, analystName, storagePath, version string, logo []byte, logoType string, logoW, logoH int) (string, error) {
 	cocMu.Lock()
 	defer cocMu.Unlock()
 
@@ -66,9 +90,38 @@ func GenerateCoC(session *models.Session, analystName, storagePath, version stri
 	pdf := gofpdf.New("P", "mm", "A4", "")
 	setupFonts(pdf)
 	pdf.SetAutoPageBreak(true, marginTop)
+
+	// Per-page footer: identity plus "Page N of M" (the total is substituted
+	// at output time), so no page can be removed or swapped unnoticed.
+	tokenShort := session.Token
+	if len(tokenShort) > 16 {
+		tokenShort = tokenShort[:16]
+	}
+	pdf.AliasNbPages("{nb}")
+	pdf.SetFooterFunc(func() {
+		pdf.SetY(-14)
+		pdf.SetDrawColor(190, 190, 190)
+		pdf.SetLineWidth(0.2)
+		pdf.Line(marginLeft, pdf.GetY(), pageWidth-marginRight, pdf.GetY())
+		pdf.SetFont("DejaVu", "", 7)
+		pdf.SetTextColor(140, 140, 140)
+		pdf.CellFormat(colWidth*0.72, 4,
+			fmt.Sprintf("Evidence Upload v%s | CHAIN OF CUSTODY | Token: %s", version, tokenShort),
+			"", 0, "L", false, 0, "")
+		pdf.CellFormat(colWidth*0.28, 4,
+			fmt.Sprintf("Page %d of %s", pdf.PageNo(), "{nb}"),
+			"", 0, "R", false, 0, "")
+	})
+
+	if logoType != "" && len(logo) > 0 {
+		pdf.RegisterImageOptionsReader("coclogo", gofpdf.ImageOptions{
+			ImageType: logoType, ReadDpi: false,
+		}, bytes.NewReader(logo))
+	}
+
 	pdf.AddPage()
 
-	drawHeader(pdf, session)
+	drawHeader(pdf, session, logoType, logoW, logoH)
 	drawCaseInfo(pdf, session, analystName, ipInfo)
 	drawEvidenceItems(pdf, session)
 	drawActivityTimeline(pdf, session)
@@ -85,7 +138,20 @@ func GenerateCoC(session *models.Session, analystName, storagePath, version stri
 	return pdfPath, nil
 }
 
-func drawHeader(pdf *gofpdf.Fpdf, session *models.Session) {
+func drawHeader(pdf *gofpdf.Fpdf, session *models.Session, logoType string, logoW, logoH int) {
+	// Company logo in the top-right corner (max 35x18 mm, aspect preserved).
+	if logoType != "" {
+		w, h := float64(logoW), float64(logoH)
+		if h > 18 {
+			w, h = w*18/h, 18
+		}
+		if w > 35 {
+			h, w = h*35/w, 35
+		}
+		pdf.ImageOptions("coclogo", pageWidth-marginRight-w, marginTop-3, w, h,
+			false, gofpdf.ImageOptions{ImageType: logoType}, 0, "")
+	}
+
 	pdf.SetFont("DejaVu", "B", 22)
 	pdf.SetTextColor(15, 52, 96)
 	pdf.CellFormat(colWidth, 12, "CHAIN OF CUSTODY", "", 1, "C", false, 0, "")
@@ -274,6 +340,11 @@ func drawIntegritySection(pdf *gofpdf.Fpdf, session *models.Session) {
 	pdf.CellFormat(45, 6, "Total Size:", "", 0, "L", false, 0, "")
 	pdf.CellFormat(colWidth-45, 6, humanSize(session.TotalSize), "", 1, "L", false, 0, "")
 
+	pdf.CellFormat(45, 6, "Document Pages:", "", 0, "L", false, 0, "")
+	pdf.SetFont("DejaVuMono", "", 8)
+	pdf.CellFormat(colWidth-45, 6, "{nb}", "", 1, "L", false, 0, "")
+	pdf.SetFont("DejaVu", "", 10)
+
 	pdf.CellFormat(45, 6, "HMAC Token:", "", 0, "L", false, 0, "")
 	pdf.SetFont("DejaVuMono", "", 8)
 	pdf.CellFormat(colWidth-45, 6, session.Token, "", 1, "L", false, 0, "")
@@ -291,6 +362,17 @@ func drawIntegritySection(pdf *gofpdf.Fpdf, session *models.Session) {
 }
 
 func drawSignatureBlock(pdf *gofpdf.Fpdf, analystName string) {
+	certText := "I certify that the above evidence items were collected, handled, and stored in accordance with established forensic procedures. The evidence integrity has been verified through SHA-256 cryptographic hashing."
+
+	// Keep the whole certification block on one page: measure it (paragraph
+	// wraps via SplitText at the real font metrics) and start a new page when
+	// the remainder would split it.
+	lines := pdf.SplitText(certText, colWidth)
+	needed := 8.0 + 2.0 + float64(len(lines))*5.0 + 8.0 + 6.0 + 10.0 + 2.0 + 5.0 + 8.0
+	if pdf.GetY()+needed > pageHeight-marginTop {
+		pdf.AddPage()
+	}
+
 	pdf.SetFont("DejaVu", "B", 12)
 	pdf.SetTextColor(15, 52, 96)
 	pdf.CellFormat(colWidth, 8, "CHAIN OF CUSTODY CERTIFICATION", "", 1, "L", false, 0, "")
@@ -298,7 +380,7 @@ func drawSignatureBlock(pdf *gofpdf.Fpdf, analystName string) {
 
 	pdf.SetFont("DejaVu", "", 9)
 	pdf.SetTextColor(30, 30, 30)
-	pdf.MultiCell(colWidth, 5, "I certify that the above evidence items were collected, handled, and stored in accordance with established forensic procedures. The evidence integrity has been verified through SHA-256 cryptographic hashing.", "", "L", false)
+	pdf.MultiCell(colWidth, 5, certText, "", "L", false)
 	pdf.Ln(8)
 
 	pdf.SetFont("DejaVu", "", 10)

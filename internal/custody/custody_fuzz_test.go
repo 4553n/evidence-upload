@@ -81,7 +81,7 @@ func TestGenerateCoCNastyInputs(t *testing.T) {
 						t.Errorf("PANIC for analyst=%q desc=%q: %v", analyst, desc, r)
 					}
 				}()
-				p, err := GenerateCoC(sess, analyst, base, "test")
+				p, err := GenerateCoC(sess, analyst, base, "test", nil, "", 0, 0)
 				if err != nil {
 					t.Errorf("error for analyst=%q desc=%q: %v", analyst, desc, err)
 					return

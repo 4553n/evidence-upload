@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Evidence Upload — User Manual v2.2.9</title>
+<title>Evidence Upload — User Manual v2.3.0</title>
 <style>
   @page { size: A4; }
   :root {
@@ -146,7 +146,7 @@
   <h1>Evidence Upload</h1>
   <div class="sub">User Manual</div>
   <div class="meta">
-    <strong>Version 2.2.9</strong><br>
+    <strong>Version 2.3.0</strong><br>
     November 2026<br><br>
     Secure forensic evidence collection, upload sessions,<br>
     and Chain of Custody documentation
@@ -207,8 +207,8 @@
   further steps are needed:
 </p>
 <pre><span class="c"># macOS (Apple Silicon)</span>
-curl -LO https://github.com/4553n/evidence-upload/releases/download/v2.2.9/evidence-upload-v2.2.9-macos-arm64.tar.gz
-tar -xzf evidence-upload-v2.2.9-macos-arm64.tar.gz
+curl -LO https://github.com/4553n/evidence-upload/releases/download/v2.3.0/evidence-upload-v2.3.0-macos-arm64.tar.gz
+tar -xzf evidence-upload-v2.3.0-macos-arm64.tar.gz
 
 <span class="c"># macOS (Intel) — use the -macos-amd64 archive</span>
 <span class="c"># Linux — use the -linux-amd64 archive</span>
@@ -231,10 +231,10 @@ tar -xzf evidence-upload-v2.2.9-macos-arm64.tar.gz
   certificate. The tunnel client is built into the application — nothing is
   downloaded or installed:
 </p>
-<pre>$ ./evidence-upload-v2.2.9-macos-arm64
+<pre>$ ./evidence-upload-v2.3.0-macos-arm64
 Detected external IP: 203.0.113.44
 Tunnel established: bore.pub:41739 -&gt; localhost:8443
-Evidence Upload Server v2.2.9 starting on :8443
+Evidence Upload Server v2.3.0 starting on :8443
 Storage: ./evidence
 Base URL: https://bore.pub:41739
 <span class="k">Admin token: 3f2a91c0e7b4d5a8c1e2f304b5d6a7c8</span>  <span class="c">(keep private; set via -admin-token or ADMIN_TOKEN)</span>
@@ -301,7 +301,11 @@ Opening admin interface...</pre>
   Click <strong>Create New Session</strong>, choose how long the link should stay
   valid, and enter a description. Use whatever identifies the case for you —
   a case number, ticket ID, or short summary. The description becomes the name of
-  the evidence folder on disk (sanitized to a safe form).
+  the evidence folder on disk (sanitized to a safe form). Optionally attach the
+  <strong>collection package</strong> right here (a zipped KAPE folder, a
+  Binalyze collector, …) — the file the remote party needs to run the collection
+  on the target machine. It can also be attached or replaced later from the
+  session detail view.
 </p>
 <figure>
   <img src="img/admin-create.png" alt="Create session dialog">
@@ -354,47 +358,69 @@ Opening admin interface...</pre>
 <h2>7. Receiving Evidence — the Uploader's View</h2>
 <p>
   The remote party opens the upload link in any modern browser. There is nothing
-  to install and no account to create. The page is intentionally minimal — it can
-  only upload, never download.
+  to install and no account to create. Everything is strictly ordered:
+  <strong>nothing may be downloaded or uploaded before the uploader's IP is
+  documented and the session is locked to it.</strong>
 </p>
 <figure>
-  <img src="img/upload-page.png" alt="Uploader page">
-  <figcaption>Figure 5 — The uploader's page: IP information step, drag-and-drop area, and the list of already-uploaded files with hashes.</figcaption>
+  <img src="img/upload-page.png" alt="Uploader page, gated state">
+  <figcaption>Figure 5 — The uploader's page on first open: only the IP step is
+  active; the collection package and the upload area stay locked until it is
+  completed.</figcaption>
 </figure>
 <h3>The uploader's steps</h3>
 <ol>
-  <li><strong>Send IP info</strong> — the page generates an IP detection report and uploads it as the first evidence file. It documents <em>both sides</em> of the connection: the uploader's IP as seen by the server, the uploader's browser-local IPs, the server's public IP, and the server's LAN IPs, plus user agent and protocol. The file form unlocks after this step.</li>
-  <li><strong>Drop files</strong> — drag and drop or use the file picker; multiple files are supported. Progress bars show per-file status.</li>
-  <li><strong>Large files</strong> — files upload in chunks and can resume after an interruption without restarting from zero.</li>
-  <li><strong>Confirm</strong> — the file list shows each completed file with its SHA-256, matching what the analyst sees.</li>
+  <li><strong>Send IP info</strong> (required first) — the page generates an IP
+  detection report and uploads it as the first evidence file. It records the
+  <em>uploader's external IP</em> (from proxy headers or browser detection —
+  never a loopback address), plus the server's public and LAN IPs, the protocol
+  and user agent. The session locks to that external IP at this moment.</li>
+  <li><strong>Download the collection package</strong> — the card shows its
+  name, size and full SHA-256 (copy it and verify the transfer before running
+  anything on the target machine). Transfer it to the suspect machine (e.g. by
+  USB), run the collection there, and bring the output back.</li>
+  <li><strong>Upload the output</strong> — drag and drop or pick files; progress
+  bars show per-file status, large files upload in chunks and can resume after
+  an interruption, and the file list confirms each file with its SHA-256.</li>
 </ol>
+<figure>
+  <img src="img/upload-page-2.png" alt="Uploader page, unlocked">
+  <figcaption>Figure 6 — The same page after the IP info was sent: the
+  collection package (name, size, SHA-256, download) and the upload area are
+  unlocked.</figcaption>
+</figure>
 <p>
-  The page also keeps an eye on the session: if the analyst revokes it or it
-  expires, a notice appears within seconds, the upload form locks itself, and
-  no further files can be sent.
+  The page also keeps an eye on the session: if the analyst revokes or kills it,
+  or it expires, a notice appears within seconds, everything locks itself, and
+  no further activity is possible.
 </p>
 <div class="callout info">
-  <strong>IP binding</strong> — the first page access locks the session to the
-  uploader's IP. A later attempt from a different IP is rejected and raises a
-  security alert. If the uploader's address legitimately changes, create a new
-  session.
+  <strong>IP binding</strong> — the session locks to the uploader's
+  <em>external</em> IP when the IP info is sent; loopback or private tunnel
+  addresses are never used. A later request from a different address is
+  rejected and raises a security alert. If the uploader's address legitimately
+  changes, kill the session and issue a fresh link.
 </div>
 
-<!-- ============================== 8. TRIAGE ============================== -->
-<h2>8. Triage Collection Packages</h2>
+<!-- ============================== 8. COLLECTION PACKAGE ============================== -->
+<h2>8. Collection Packages</h2>
 <p>
-  A triage package is a collection artifact (for example a full triage output zip)
-  that you want to hand <em>to</em> the remote party — typically an acquisition
-  script output or a package they must run and return. From a session's detail
-  view, use <strong>Send Triage Package</strong> to upload one, or
-  <strong>Replace</strong> to swap it later.
+  The collection package is the tool you hand <em>to</em> the remote party — a
+  zipped KAPE folder, a Binalyze collector, an acquisition script. Attach it when
+  creating the session (optional picker in the dialog) or later from the session
+  detail view via <strong>Attach / Replace / Remove</strong>. The file is stored
+  outside the case folder (evidence stays pure) and its SHA-256 is recorded in
+  the session, the activity log and the Chain of Custody.
 </p>
-<p>Each package gets a short download link (the session's code works here too):</p>
+<p>The remote party gets it from the upload page (Step 2, after the IP info), or
+directly via the short link (the session's code works here too):</p>
 <pre>https://bore.pub:41739/t/<span class="s">K7M3-Q9P2</span></pre>
 <div class="callout">
-  <strong>The triage link is unauthenticated by design</strong> — the code (or
-  token) in the URL is the only protection. Share it only with the intended
-  recipient, and revoke the session when the transfer is complete.
+  <strong>The download is gated, not public</strong> — it only works after the
+  uploader's IP is documented and only from the locked external address. Every
+  download is logged (file, size, SHA-256, IP, time) and appears in the CoC
+  timeline. The KAPE/Binalyze license terms are your responsibility: only hand
+  over tools you are entitled to redistribute.
 </div>
 
 <!-- ============================== 9. REVOKE + CoC ============================== -->
@@ -402,11 +428,15 @@ Opening admin interface...</pre>
 <p>
   When collection is finished, click <strong>Revoke</strong>. You are prompted for
   the analyst name that will appear on the certification block of the Chain of
-  Custody document.
+  Custody document, and optionally for a <strong>company logo</strong> (PNG/JPEG)
+  to brand the document header. The logo can be saved once and reused
+  (<em>Use saved logo</em>) — it is also applied automatically to CoCs generated
+  when sessions expire.
 </p>
 <figure>
-  <img src="img/admin-revoke.png" alt="Revoke session dialog">
-  <figcaption>Figure 6 — The revoke dialog. Revoking closes the session for further uploads and generates the documentation.</figcaption>
+  <img src="img/admin-revoke.png" alt="Revoke session dialog with logo option">
+  <figcaption>Figure 7 — The revoke dialog: analyst name and optional logo
+  branding (none / saved logo / choose an image).</figcaption>
 </figure>
 <p>
   Revoking writes <code>CHAIN_OF_CUSTODY.pdf</code> (plus a
@@ -416,18 +446,38 @@ Opening admin interface...</pre>
   notified at the same moment — their upload page shows that the session was
   closed and locks the upload form.
 </p>
+<h3>Revoke or Kill?</h3>
+<p>
+  Sessions that <strong>failed or never started</strong> — the remote party never
+  connected, the link is lost, or the session locked to a wrong address — should
+  not go through the CoC ceremony. Use <strong>Kill</strong> instead: the link
+  and short code die immediately, the session leaves the panel, and a tombstone
+  records the reason. No Chain of Custody is generated (the dialog warns if
+  files were already uploaded), and optionally the case folder can be deleted —
+  unrecoverable, and recorded.
+</p>
+<figure>
+  <img src="img/admin-kill.png" alt="Kill session dialog">
+  <figcaption>Figure 8 — The kill dialog: the consequences are spelled out, a
+  reason is recorded with the session, and case-folder deletion is an explicit
+  opt-in.</figcaption>
+</figure>
 <figure>
   <img src="img/coc-page-1.png" alt="Chain of Custody PDF, page 1">
-  <figcaption>Figure 7 — The generated Chain of Custody document: case information, collector IP details, and the evidence table with SHA-256 hashes.</figcaption>
+  <figcaption>Figure 9 — The generated Chain of Custody document: company logo in
+  the header, case information, collector IP details, evidence table with SHA-256
+  hashes, and per-page "Page N of M" numbering in the footer.</figcaption>
 </figure>
 <h3>The document contains</h3>
 <ul>
   <li><strong>Case information</strong> — description, session token, creation and expiry times, status, analyst, generation time</li>
-  <li><strong>Collector IP information</strong> — parsed from the uploader's IP detection report (uploader IP, uploader local IPs, server public IP, server LAN IP, user agent)</li>
+  <li><strong>Company logo</strong> — embedded in the header when branding is used (top-right)</li>
+  <li><strong>Collector IP information</strong> — parsed from the uploader's IP detection report (uploader's external IP with its detection source, server public IP, server LAN IP, user agent)</li>
   <li><strong>Evidence items</strong> — every file with size and SHA-256 hash</li>
-  <li><strong>Activity timeline</strong> — the full audit trail with timestamps, actions, and source IPs</li>
-  <li><strong>Integrity verification</strong> — file count, total size, session credentials, and instructions for verifying the <code>.sha256</code> sidecars with <code>sha256sum -c</code></li>
-  <li><strong>Certification block</strong> — analyst signature and date lines</li>
+  <li><strong>Activity timeline</strong> — the full audit trail with timestamps, actions, and source IPs (including collection package attach and download events)</li>
+  <li><strong>Integrity verification</strong> — file count, total size, <strong>document page count</strong>, session credentials, and instructions for verifying the <code>.sha256</code> sidecars with <code>sha256sum -c</code></li>
+  <li><strong>Certification block</strong> — kept entirely on one page; analyst signature and date lines</li>
+  <li><strong>Per-page footer</strong> — "Page N of M" plus case and token identity on every page, so a removed or substituted page is immediately detectable</li>
 </ul>
 <p class="small">
   Text in the PDF is rendered with embedded Unicode fonts (DejaVu), so case names
@@ -542,8 +592,11 @@ CLOUDFLARE_DOMAIN=evidence.example.com</pre>
   </tr>
   <tr>
     <td><strong>IP binding</strong></td>
-    <td>First access locks the session to the uploader's IP; mismatches are
-    rejected and alerted.</td>
+    <td>The session locks to the uploader's <em>external</em> IP when the IP info
+    is sent (proxy headers, or browser detection through the tunnel); loopback
+    and private addresses are never recorded. Every gated request re-verifies the
+    caller against that identity — mismatches are rejected and alerted. Nothing
+    (downloads or uploads) is possible before the IP info step.</td>
   </tr>
   <tr>
     <td><strong>Integrity</strong></td>
@@ -612,13 +665,25 @@ CLOUDFLARE_DOMAIN=evidence.example.com</pre>
     <td>Upload link reports a session problem</td>
     <td>The message names the exact reason: <em>closed by the analyst</em>
     (revoked), <em>expired</em>, or <em>not found</em> (malformed link, or a link
-    from a server older than v2.2.9 that lost sessions on restart). Ask the
+    from a server older than v2.3.0 that lost sessions on restart). Ask the
     analyst for a fresh link if in doubt.</td>
   </tr>
   <tr>
+    <td>Uploader sees "Send IP information first" (403)</td>
+    <td>By design: downloads and uploads are impossible until the IP info step
+    completes and the session locks to the uploader's external IP.</td>
+  </tr>
+  <tr>
+    <td>Session failed or the remote party never connected</td>
+    <td>Use <strong>Kill</strong> (not Revoke): the link dies immediately, a
+    tombstone records the reason, and no CoC is generated. Then create a fresh
+    session and reissue the link.</td>
+  </tr>
+  <tr>
     <td>Session rejects the uploader</td>
-    <td>IP binding: the session was first accessed from a different address. Create
-    a new session if the change is legitimate.</td>
+    <td>IP binding: the request came from a different address than the locked
+    external IP. If the change is legitimate, kill the session and issue a fresh
+    link.</td>
   </tr>
   <tr>
     <td>Admin panel shows unexpected sessions</td>
@@ -658,7 +723,7 @@ $ sha256sum -c SHA256SUMS            <span class="c"># Linux</span></pre>
   <li><strong>DejaVu fonts</strong> (embedded in the CoC generator) — Bitstream Vera / DejaVu license; the full text ships in <code>internal/custody/fonts/LICENSE-DejaVu.txt</code></li>
 </ul>
 <p class="small" style="margin-top:22px">
-  Evidence Upload v2.2.9 — User Manual · Generated 2026-11-05 ·
+  Evidence Upload v2.3.0 — User Manual · Generated 2026-11-05 ·
   Interfaces shown are from the v2.2.x series.
 </p>
 
