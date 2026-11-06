@@ -6,7 +6,7 @@ A secure forensic evidence data upload web application with session-based authen
 
 An illustrated user manual — installation, admin panel, uploader flow, Chain of
 Custody, tunnels, HTTPS, and troubleshooting — is available at
-[`docs/user-manual/Evidence-Upload-User-Manual-v2.2.8.pdf`](docs/user-manual/Evidence-Upload-User-Manual-v2.2.8.pdf)
+[`docs/user-manual/Evidence-Upload-User-Manual-v2.2.9.pdf`](docs/user-manual/Evidence-Upload-User-Manual-v2.2.9.pdf)
 (HTML source and screenshots in the same directory).
 
 ## Features

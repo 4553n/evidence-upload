@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.2.9] - 2026-11-05
+
+### Fixed
+- **Garbled non-ASCII text on the upload page** - Neither HTML page declared its character encoding and the server sent bare `text/html`, so browsers fell back to Windows-1252 and case references with em-dashes, Cyrillic etc. rendered as mojibake; both pages now declare `<meta charset="utf-8">` and serve `text/html; charset=utf-8`
+- **User manual text overlapping the page footers** - The manual stylesheet's `@page { margin: 0 }` overrode the print margins, letting content flow into the footer band; margins are now authoritative in the print configuration, headings avoid being stranded at page bottoms, and a regression checker (`scripts/check_footers.py`) verifies clearance on every page
+
 ## [2.2.8] - 2026-11-05
 
 ### Added

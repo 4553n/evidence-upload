@@ -274,7 +274,7 @@ func (s *Server) deliverUploadPage(w http.ResponseWriter, r *http.Request, sessi
 		s.sessions.AddActivity(token, "page_access", clientIP, r.UserAgent(), "Upload page accessed")
 	}
 
-	w.Header().Set("Content-Type", "text/html")
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	html := strings.Replace(uploadHTML, "{{TOKEN}}", session.Token, 1)
 	html = strings.Replace(html, "{{SECRET}}", session.Secret, 1)
 	html = strings.Replace(html, "{{DESCRIPTION}}", session.Description, 1)
@@ -822,7 +822,7 @@ func serverLANIPs() string {
 }
 
 func (s *Server) handleAdmin(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "text/html")
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	fmt.Fprint(w, adminHTML)
 }
 
@@ -1095,6 +1095,7 @@ func getClientIP(r *http.Request) string {
 var uploadHTML = `<!DOCTYPE html>
 <html>
 <head>
+    <meta charset="utf-8">
     <title>Evidence Upload</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
@@ -1458,6 +1459,7 @@ var uploadHTML = `<!DOCTYPE html>
 var adminHTML = `<!DOCTYPE html>
 <html>
 <head>
+    <meta charset="utf-8">
     <title>Evidence Upload - Admin</title>
     <style>
         * { box-sizing: border-box; margin: 0; padding: 0; }
